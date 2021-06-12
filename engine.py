@@ -133,7 +133,7 @@ class TetrisEngine:
 
         return sum(can_clear)
 
-    def valid_action_count(self):
+    def count_valid_actions(self):
         valid_action_sum = 0
 
         for value, fn in self.value_action_map.items():
@@ -143,15 +143,49 @@ class TetrisEngine:
 
         return valid_action_sum
 
+    def move_to_pos(self, target_column, rotation):
+        # rotation: 0 - don't rotate, 1..3 - rotate n times left
+        # first rotate to the correct orientation
+        if rotation == 1:
+            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board) 
+        elif rotation == 2:
+            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board)
+            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board)
+        elif rotation == 3:
+            self.shape, self.anchor = rotate_right(self.shape, self.anchor, self.board) 
+        # Then move to the desired column
+        diff = self.anchor - target_column
+        if diff < 0:
+            for _ in range(abs(diff)):
+                self.shape, self.anchor = right(self.shape, self.anchor, self.board) 
+        elif diff > 0:
+            for _ in range(abs(diff)):
+                self.shape, self.anchor = left(self.shape, self.anchor, self.board)
+        # Hopefully this position is valid :D
+        state, reward, done = self.step(2)
+        return state, reward, done
+
+    # def multi_step(self, actions):
+    #     full_reward = 0
+    #     done = False
+    #     for action in actions:
+    #         _, reward, done = self.step(action)
+    #         full_reward += reward
+    #     # Do the hard drop
+    #     state, reward, done = self.step(2)
+    #     full_reward += reward
+    #     return state, full_reward, done
+
     def step(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
         self.shape, self.anchor = self.value_action_map[action](self.shape, self.anchor, self.board)
-        # Drop each step
-        self.shape, self.anchor = soft_drop(self.shape, self.anchor, self.board)
+        # Don't soft drop automatically
+        # self.shape, self.anchor = soft_drop(self.shape, self.anchor, self.board)
 
         # Update time and reward
         self.time += 1
-        reward = self.valid_action_count()
+        # What a useless call :O
+        # reward = self.count_valid_actions()
         #reward = random.randint(0, 0)
         reward = 1
 
@@ -181,10 +215,10 @@ class TetrisEngine:
         return self.board
 
     def _set_piece(self, on=False):
-        for i, j in self.shape:
-            x, y = i + self.anchor[0], j + self.anchor[1]
-            if x < self.width and x >= 0 and y < self.height and y >= 0:
-                self.board[int(self.anchor[0] + i), int(self.anchor[1] + j)] = on
+        for x_in_shape_space, y_in_shape_space in self.shape:
+            x_in_board_space, y_in_board_space = x_in_shape_space + self.anchor[0], y_in_shape_space + self.anchor[1]
+            if x_in_board_space < self.width and x_in_board_space >= 0 and y_in_board_space < self.height and y_in_board_space >= 0:
+                self.board[x_in_board_space, y_in_board_space] = on
 
     def __repr__(self):
         self._set_piece(True)
