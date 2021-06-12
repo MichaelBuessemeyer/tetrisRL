@@ -8,7 +8,9 @@ You need to have [pytorch](http://pytorch.org/) pre-installed. Easy to use
 download scripts can be found on their website.
 
 ```bash
-$ git clone https://github.com/jaybutera/tetrisRL
+$ git clone https://github.com/MichaelBuessemeyer/tetrisRL.git
+# or
+$ git clone git@github.com:MichaelBuessemeyer/tetrisRL.git
 $ cd tetrisRL
 $ python setup.py install
 ```
