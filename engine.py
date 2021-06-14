@@ -1,7 +1,9 @@
 #from __future__ import print_function
 
+from gym.spaces.discrete import Discrete
 import numpy as np
 import random
+from gym import spaces
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -25,8 +27,10 @@ def rotated(shape, cclk=False):
 def is_occupied(shape, anchor, board):
     for i, j in shape:
         x, y = anchor[0] + i, anchor[1] + j
-        if y < 0:
-            continue
+        # if y < 0:
+        #     continue
+        # Fix python indexing that hurts use here really hard.
+        y = max(y, 0)
         if x < 0 or x >= board.shape[0] or y >= board.shape[1] or board[x, y]:
             return True
     return False
@@ -74,6 +78,17 @@ class TetrisEngine:
         self.height = height
         self.board = np.zeros(shape=(width, height), dtype=np.float)
 
+        # rotation, column
+        self.action_space = spaces.Tuple((spaces.Discrete(4), spaces.Discrete(width)))
+        # aggregated height, bumpiness, completed lines, holes and active tetromino
+        self.observation_space = spaces.Tuple((
+            spaces.Discrete((width*height)+1), 
+            spaces.Discrete((height*(width-1))+1), 
+            spaces.Discrete(height + 1), 
+            spaces.Discrete(int(width*height/2) + 1),
+            spaces.Discrete(7)
+        ))
+
         # actions are triggered by letters
         self.value_action_map = {
             0: left,
@@ -92,6 +107,7 @@ class TetrisEngine:
         self.score = -1
         self.anchor = None
         self.shape = None
+        self.tetromino = None
         self.n_deaths = 0
 
         # used for generating shapes
@@ -108,12 +124,13 @@ class TetrisEngine:
             r -= n
             if r <= 0:
                 self._shape_counts[i] += 1
+                self.tetromino = i
                 return shapes[shape_names[i]]
 
     def _new_piece(self):
         # Place randomly on x-axis with 2 tiles padding
         #x = int((self.width/2+1) * np.random.rand(1,1)[0,0]) + 2
-        self.anchor = (self.width / 2, 0)
+        self.anchor = (int(self.width / 2), 0)
         #self.anchor = (x, 0)
         self.shape = self._choose_shape()
 
@@ -143,9 +160,11 @@ class TetrisEngine:
 
         return valid_action_sum
 
-    def move_to_pos(self, target_column, rotation):
+    def step(self, action):
         # rotation: 0 - don't rotate, 1..3 - rotate n times left
         # first rotate to the correct orientation
+        rotation = action[0]
+        target_column = action[1]
         if rotation == 1:
             self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board) 
         elif rotation == 2:
@@ -154,16 +173,17 @@ class TetrisEngine:
         elif rotation == 3:
             self.shape, self.anchor = rotate_right(self.shape, self.anchor, self.board) 
         # Then move to the desired column
-        diff = self.anchor - target_column
+        diff = self.anchor[0] - target_column
         if diff < 0:
             for _ in range(abs(diff)):
                 self.shape, self.anchor = right(self.shape, self.anchor, self.board) 
         elif diff > 0:
-            for _ in range(abs(diff)):
+            for _ in range(diff):
                 self.shape, self.anchor = left(self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
-        state, reward, done = self.step(2)
-        return state, reward, done
+        state, reward, done = self.step2(2)
+        features = self.get_all_features()
+        return features, reward, done, {}
 
     # def multi_step(self, actions):
     #     full_reward = 0
@@ -176,7 +196,7 @@ class TetrisEngine:
     #     full_reward += reward
     #     return state, full_reward, done
 
-    def step(self, action):
+    def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
         self.shape, self.anchor = self.value_action_map[action](self.shape, self.anchor, self.board)
         # Don't soft drop automatically
@@ -211,8 +231,56 @@ class TetrisEngine:
         self.score = 0
         self._new_piece()
         self.board = np.zeros_like(self.board)
+        features = self.get_all_features()
 
-        return self.board
+        return self.board, self.tetromino, features
+
+    ###### Feature Section #######
+    def get_all_features(self):
+        features = np.zeros(5)
+        self._set_piece(False)
+        features[0] = self.get_aggregated_height()
+        features[1] = self.get_bumpiness()
+        features[2] = self.completed_lines()
+        features[3] = self.get_hole_count()
+        features[4] = self.tetromino
+        # self._set_piece(True)
+        return features
+
+    def get_bumpiness(self):
+        bumpiness = 0
+        heights = np.zeros(self.width)
+        for column in range(self.width):
+            for row in range(self.height):
+                if self.board[column, row]:
+                    heights[column] = self.height - row
+                    break
+        for column in range(self.width - 1):
+            bumpiness += abs(heights[column] - heights[column + 1])
+        return bumpiness
+
+    def completed_lines(self):
+        return np.count_nonzero(np.array([np.all(self.board[:, i]) for i in range(self.height)]))
+
+    def get_aggregated_height(self):
+        aggregated_height = 0
+        for column in range(self.width):
+            for row in range(self.height):
+                if self.board[column, row]:
+                    aggregated_height += self.height - row
+                    break
+        return aggregated_height
+
+    def get_hole_count(self):
+        holes = 0
+        for column in range(self.width):
+            found_occupied_piece = False
+            for row in range(self.height):
+                if self.board[column, row] and not found_occupied_piece:
+                    found_occupied_piece = True
+                elif found_occupied_piece and not self.board[column, row]:
+                    holes += 1
+        return holes
 
     def _set_piece(self, on=False):
         for x_in_shape_space, y_in_shape_space in self.shape:
