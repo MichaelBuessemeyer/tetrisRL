@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import base64
+from threading import current_thread
 import imageio
 import IPython
 import matplotlib
@@ -28,18 +29,18 @@ from tf_agents.utils import common
 
 display = pyvirtualdisplay.Display(visible=0, size=(1400, 900)).start()
 
-num_iterations = 20000 # @param {type:"integer"}
+num_iterations = 10000000 # @param {type:"integer"}
 
-initial_collect_steps = 100  # @param {type:"integer"} 
+initial_collect_steps = 1000  # @param {type:"integer"} 
 collect_steps_per_iteration = 1  # @param {type:"integer"}
 replay_buffer_max_length = 100000  # @param {type:"integer"}
 
-batch_size = 64  # @param {type:"integer"}
-learning_rate = 1e-3  # @param {type:"number"}
-log_interval = 200  # @param {type:"integer"}
+batch_size = 126  # @param {type:"integer"}
+learning_rate = 0.0001  # @param {type:"number"}
+log_interval = 500  # @param {type:"integer"}
 
-num_eval_episodes = 10  # @param {type:"integer"}
-eval_interval = 1000  # @param {type:"integer"}
+num_eval_episodes = 50  # @param {type:"integer"}
+eval_interval = 2000  # @param {type:"integer"}
 
 width, height = 10, 20 # standard tetris friends rules
 
@@ -50,7 +51,7 @@ eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
 
 fc_layer_params = (100, 50)
-action_tensor_spec = tensor_spec.from_spec(train_py_env.action_space)
+action_tensor_spec = tensor_spec.from_spec(train_py_env.action_spec())
 num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
 # Define a helper function to create Dense layers configured with the right
@@ -78,15 +79,27 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
 train_step_counter = tf.Variable(0)
 
+current_epsilon = 1.0
+epsilon_decay = 0.9999
+epsilon_min = 0.1
+
+def get_eplison():
+  global current_epsilon
+  pre_epsilon = current_epsilon
+  current_epsilon = max(epsilon_min, current_epsilon * epsilon_decay)
+  return pre_epsilon
+
 agent = dqn_agent.DqnAgent(
     train_env.time_step_spec(),
     train_env.action_spec(),
     q_network=q_net,
     optimizer=optimizer,
+    epsilon_greedy=get_eplison,
     td_errors_loss_fn=common.element_wise_squared_loss,
     train_step_counter=train_step_counter)
 
 agent.initialize()
+
 
 eval_policy = agent.policy
 collect_policy = agent.collect_policy
@@ -180,9 +193,14 @@ for _ in range(num_iterations):
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
 
-
+plt.plot([1, 2, 3, 4])
+plt.ylabel('some numbers')
+plt.show()
 iterations = range(0, num_iterations + 1, eval_interval)
 plt.plot(iterations, returns)
 plt.ylabel('Average Return')
 plt.xlabel('Iterations')
 plt.ylim(top=250)
+print("showing...")
+plt.show()
+print("showed...")

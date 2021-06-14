@@ -1,8 +1,22 @@
 #from __future__ import print_function
 
-from gym.spaces.discrete import Discrete
-import numpy as np
 import random
+
+import tensorflow as tf
+import numpy as np
+
+from tf_agents.environments import py_environment
+from tf_agents.environments import tf_environment
+from tf_agents.environments import tf_py_environment
+from tf_agents.environments import utils
+from tf_agents.specs import array_spec
+from tf_agents.environments import wrappers
+from tf_agents.environments import suite_gym
+from tf_agents.trajectories import time_step as ts
+
+tf.compat.v1.enable_v2_behavior()
+
+
 from gym import spaces
 
 shapes = {
@@ -68,26 +82,31 @@ def rotate_right(shape, anchor, board):
     new_shape = rotated(shape, cclk=True)
     return (shape, anchor) if is_occupied(new_shape, anchor, board) else (new_shape, anchor)
 
+
 def idle(shape, anchor, board):
     return (shape, anchor)
 
+ROTATION_ACTION_COUNT = 4
 
-class TetrisEngine:
+def split_action(action: int):
+    rotation = action % ROTATION_ACTION_COUNT
+    column = action // ROTATION_ACTION_COUNT
+    return rotation, column
+
+class TetrisEngine(py_environment.PyEnvironment):
     def __init__(self, width, height):
         self.width = width
         self.height = height
         self.board = np.zeros(shape=(width, height), dtype=np.float)
-
-        # rotation, column
-        self.action_space = spaces.Tuple((spaces.Discrete(4), spaces.Discrete(width)))
-        # aggregated height, bumpiness, completed lines, holes and active tetromino
-        self.observation_space = spaces.Tuple((
-            spaces.Discrete((width*height)+1), 
-            spaces.Discrete((height*(width-1))+1), 
-            spaces.Discrete(height + 1), 
-            spaces.Discrete(int(width*height/2) + 1),
-            spaces.Discrete(7)
-        ))
+        # We have 4 rotations and width many columns where a tetromino can be placed.
+        # Thus a one dimensional action space goes from 0 to (4 * width) - 1
+        self._action_spec = array_spec.BoundedArraySpec(
+            shape=(), dtype=np.int32, minimum=0, maximum=(4 * width) - 1, name='action')
+        self._observation_spec = array_spec.BoundedArraySpec(
+            shape=(5,), dtype=np.int32, minimum=[0, 0, 0, 0, 0],
+            maximum=[(width*height)+1, (height * (width-1))+1, height + 1, int(width * height/2) + 1, 7], name='observation')
+            
+        self._state = np.zeros(5)
 
         # actions are triggered by letters
         self.value_action_map = {
@@ -99,7 +118,8 @@ class TetrisEngine:
             5: rotate_right,
             6: idle,
         }
-        self.action_value_map = dict([(j, i) for i, j in self.value_action_map.items()])
+        self.action_value_map = dict(
+            [(j, i) for i, j in self.value_action_map.items()])
         self.nb_actions = len(self.value_action_map)
 
         # for running the engine
@@ -115,6 +135,12 @@ class TetrisEngine:
 
         # clear after initializing
         self.clear()
+
+    def action_spec(self):
+        return self._action_spec
+
+    def observation_spec(self):
+        return self._observation_spec
 
     def _choose_shape(self):
         maxm = max(self._shape_counts)
@@ -160,30 +186,39 @@ class TetrisEngine:
 
         return valid_action_sum
 
-    def step(self, action):
+    def _step(self, action):
         # rotation: 0 - don't rotate, 1..3 - rotate n times left
         # first rotate to the correct orientation
-        rotation = action[0]
-        target_column = action[1]
+        rotation, target_column = split_action(action)
         if rotation == 1:
-            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board) 
+            self.shape, self.anchor = rotate_left(
+                self.shape, self.anchor, self.board)
         elif rotation == 2:
-            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board)
-            self.shape, self.anchor = rotate_left(self.shape, self.anchor, self.board)
+            self.shape, self.anchor = rotate_left(
+                self.shape, self.anchor, self.board)
+            self.shape, self.anchor = rotate_left(
+                self.shape, self.anchor, self.board)
         elif rotation == 3:
-            self.shape, self.anchor = rotate_right(self.shape, self.anchor, self.board) 
+            self.shape, self.anchor = rotate_right(
+                self.shape, self.anchor, self.board)
         # Then move to the desired column
         diff = self.anchor[0] - target_column
         if diff < 0:
             for _ in range(abs(diff)):
-                self.shape, self.anchor = right(self.shape, self.anchor, self.board) 
+                self.shape, self.anchor = right(
+                    self.shape, self.anchor, self.board)
         elif diff > 0:
             for _ in range(diff):
-                self.shape, self.anchor = left(self.shape, self.anchor, self.board)
+                self.shape, self.anchor = left(
+                    self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
-        state, reward, done = self.step2(2)
-        features = self.get_all_features()
-        return features, reward, done, {}
+        reward, done = self.step2(2)
+        self._state = self.get_all_features()
+        if done:
+            return ts.termination(self._state, reward)
+        else:
+            return ts.transition(self._state, reward, discount=1.0)
+        # return features, reward, done, {}
 
     # def multi_step(self, actions):
     #     full_reward = 0
@@ -198,7 +233,8 @@ class TetrisEngine:
 
     def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
-        self.shape, self.anchor = self.value_action_map[action](self.shape, self.anchor, self.board)
+        self.shape, self.anchor = self.value_action_map[action](
+            self.shape, self.anchor, self.board)
         # Don't soft drop automatically
         # self.shape, self.anchor = soft_drop(self.shape, self.anchor, self.board)
 
@@ -218,13 +254,19 @@ class TetrisEngine:
                 self.n_deaths += 1
                 done = True
                 reward = -100
+                self.reset()
             else:
                 self._new_piece()
 
-        self._set_piece(True)
-        state = np.copy(self.board)
-        self._set_piece(False)
-        return state, reward, done
+        # self._set_piece(True)
+        # state = np.copy(self.board)
+        # self._set_piece(False)
+        return reward, done
+
+    def _reset(self):
+        self.clear()
+        return ts.restart(self._state)
+
 
     def clear(self):
         self.time = 0
@@ -232,12 +274,12 @@ class TetrisEngine:
         self._new_piece()
         self.board = np.zeros_like(self.board)
         features = self.get_all_features()
-
-        return self.board, self.tetromino, features
+        self._state = features
+        return features
 
     ###### Feature Section #######
     def get_all_features(self):
-        features = np.zeros(5)
+        features = np.zeros(5, dtype=np.int32)
         self._set_piece(False)
         features[0] = self.get_aggregated_height()
         features[1] = self.get_bumpiness()
@@ -284,14 +326,16 @@ class TetrisEngine:
 
     def _set_piece(self, on=False):
         for x_in_shape_space, y_in_shape_space in self.shape:
-            x_in_board_space, y_in_board_space = x_in_shape_space + self.anchor[0], y_in_shape_space + self.anchor[1]
+            x_in_board_space, y_in_board_space = x_in_shape_space + \
+                self.anchor[0], y_in_shape_space + self.anchor[1]
             if x_in_board_space < self.width and x_in_board_space >= 0 and y_in_board_space < self.height and y_in_board_space >= 0:
                 self.board[x_in_board_space, y_in_board_space] = on
 
     def __repr__(self):
         self._set_piece(True)
         s = 'o' + '-' * self.width + 'o\n'
-        s += '\n'.join(['|' + ''.join(['X' if j else ' ' for j in i]) + '|' for i in self.board.T])
+        s += '\n'.join(['|' + ''.join(['X' if j else ' ' for j in i]
+                                      ) + '|' for i in self.board.T])
         s += '\no' + '-' * self.width + 'o'
         self._set_piece(False)
         return s
