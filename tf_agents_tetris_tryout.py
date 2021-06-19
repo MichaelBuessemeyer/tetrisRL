@@ -3,12 +3,12 @@ from __future__ import absolute_import, division, print_function
 import base64
 from threading import current_thread
 import imageio
-import IPython
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL.Image
-import pyvirtualdisplay
+# import pyvirtualdisplay
+from tetris_ai_engine import Tetris
 
 import tensorflow as tf
 
@@ -27,7 +27,7 @@ from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 
-display = pyvirtualdisplay.Display(visible=0, size=(1400, 900)).start()
+#display = pyvirtualdisplay.Display(visible=0, size=(1400, 900)).start()
 
 num_iterations = 10000000 # @param {type:"integer"}
 
@@ -44,12 +44,14 @@ eval_interval = 2000  # @param {type:"integer"}
 
 width, height = 10, 20 # standard tetris friends rules
 
-train_py_env = TetrisEngine(width, height)
-eval_py_env = TetrisEngine(width, height)
+# train_py_env = TetrisEngine(width, height)
+# eval_py_env = TetrisEngine(width, height)
+train_py_env = Tetris()
+eval_py_env = Tetris()
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
-
+# IDEA: try different values 
 fc_layer_params = (100, 50)
 action_tensor_spec = tensor_spec.from_spec(train_py_env.action_spec())
 num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
@@ -60,8 +62,10 @@ def dense_layer(num_units):
   return tf.keras.layers.Dense(
       num_units,
       activation=tf.keras.activations.relu,
-      kernel_initializer=tf.keras.initializers.VarianceScaling(
-          scale=2.0, mode='fan_in', distribution='truncated_normal'))
+      # IDEA: try different initializers :)
+      #kernel_initializer=tf.keras.initializers.VarianceScaling(
+       #   scale=2.0, mode='fan_in', distribution='truncated_normal')
+  )
 
 # QNetwork consists of a sequence of Dense layers followed by a dense layer
 # with `num_actions` units to generate one q_value per available action as
@@ -70,9 +74,10 @@ dense_layers = [dense_layer(num_units) for num_units in fc_layer_params]
 q_values_layer = tf.keras.layers.Dense(
     num_actions,
     activation=None,
-    kernel_initializer=tf.keras.initializers.RandomUniform(
-        minval=-0.03, maxval=0.03),
-    bias_initializer=tf.keras.initializers.Constant(-0.2))
+    #kernel_initializer=tf.keras.initializers.RandomUniform(
+     #   minval=-0.03, maxval=0.03),
+    #bias_initializer=tf.keras.initializers.Constant(-0.2)
+)
 q_net = sequential.Sequential(dense_layers + [q_values_layer])
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
@@ -83,7 +88,7 @@ current_epsilon = 1.0
 epsilon_decay = 0.9999
 epsilon_min = 0.1
 
-def get_eplison():
+def get_epsilon():
   global current_epsilon
   pre_epsilon = current_epsilon
   current_epsilon = max(epsilon_min, current_epsilon * epsilon_decay)
@@ -94,7 +99,7 @@ agent = dqn_agent.DqnAgent(
     train_env.action_spec(),
     q_network=q_net,
     optimizer=optimizer,
-    epsilon_greedy=get_eplison,
+    epsilon_greedy=get_epsilon,
     td_errors_loss_fn=common.element_wise_squared_loss,
     train_step_counter=train_step_counter)
 
@@ -143,7 +148,8 @@ def collect_data(env, policy, buffer, steps):
   for _ in range(steps):
     collect_step(env, policy, buffer)
 
-collect_data(train_env, random_policy, replay_buffer, initial_collect_steps)
+# CHANGE: Changed random_policy to collect_policy
+collect_data(train_env, collect_policy, replay_buffer, initial_collect_steps)
 
 # This loop is so common in RL, that we provide standard implementations. 
 # For more details see tutorial 4 or the drivers module.

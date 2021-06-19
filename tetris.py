@@ -8,6 +8,7 @@ import torch.optim as optim
 import random
 import time
 from engine import TetrisEngine
+from tetris_ai_engine import Tetris
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
 
@@ -96,6 +97,7 @@ def main(episode, load, learn, debug, random_rate, session):
 
     width, height = 7, 14 # standard tetris friends rules
     env = TetrisEngine(width, height)
+    # env = Tetris()
     action_count = 7
     agent = Agent(lr=1e-4, input_dims=width*height, gamma=0.5, n_actions=action_count, l1_size=512, l2_size=128)
     if session:

@@ -6,12 +6,7 @@ import tensorflow as tf
 import numpy as np
 
 from tf_agents.environments import py_environment
-from tf_agents.environments import tf_environment
-from tf_agents.environments import tf_py_environment
-from tf_agents.environments import utils
 from tf_agents.specs import array_spec
-from tf_agents.environments import wrappers
-from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
 
 tf.compat.v1.enable_v2_behavior()
@@ -141,6 +136,14 @@ class TetrisEngine(py_environment.PyEnvironment):
 
     def observation_spec(self):
         return self._observation_spec
+        
+    def get_game_score(self):
+        '''Returns the current game score.
+
+        Each block placed counts as one.
+        For lines cleared, it is used BOARD_WIDTH * lines_cleared ^ 2.
+        '''
+        return self.score
 
     def _choose_shape(self):
         maxm = max(self._shape_counts)
@@ -171,7 +174,7 @@ class TetrisEngine(py_environment.PyEnvironment):
             if not can_clear[i]:
                 new_board[:, j] = self.board[:, i]
                 j -= 1
-        self.score += sum(can_clear)
+        self.score += sum(can_clear)**2 * self.width + 1
         self.board = new_board
 
         return sum(can_clear)
