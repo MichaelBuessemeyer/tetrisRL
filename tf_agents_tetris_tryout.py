@@ -1,15 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
-import base64
-from threading import current_thread
-import imageio
-import IPython
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import PIL.Image
-import pyvirtualdisplay
-
+from pathlib import Path
 import tensorflow as tf
 
 from engine import TetrisEngine
@@ -27,13 +20,19 @@ from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
 
-display = pyvirtualdisplay.Display(visible=0, size=(1400, 900)).start()
+
+
+tf.compat.v1.enable_v2_behavior()
+checkpoint_dir = Path("./checkpoints")
+
+# tf.config.gpu.set_per_process_memory_fraction(0.666)
+
 
 num_iterations = 10000000 # @param {type:"integer"}
 
 initial_collect_steps = 1000  # @param {type:"integer"} 
 collect_steps_per_iteration = 1  # @param {type:"integer"}
-replay_buffer_max_length = 100000  # @param {type:"integer"}
+replay_buffer_max_length = 10000  # @param {type:"integer"}
 
 batch_size = 126  # @param {type:"integer"}
 learning_rate = 0.0001  # @param {type:"number"}
@@ -93,6 +92,7 @@ agent = dqn_agent.DqnAgent(
     train_env.time_step_spec(),
     train_env.action_spec(),
     q_network=q_net,
+    gamma=0.95,
     optimizer=optimizer,
     epsilon_greedy=get_eplison,
     td_errors_loss_fn=common.element_wise_squared_loss,
@@ -157,6 +157,7 @@ collect_data(train_env, random_policy, replay_buffer, initial_collect_steps)
 
 
 # Dataset generates trajectories with shape [Bx2x...]
+#TODO is This num_steps = 2 might not be optimal
 dataset = replay_buffer.as_dataset(
     num_parallel_calls=3, 
     sample_batch_size=batch_size, 
@@ -173,6 +174,20 @@ agent.train_step_counter.assign(0)
 # Evaluate the agent's policy once before training.
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
+best_return = -95
+
+
+
+checkpoint_dir = Path("./checkpoints")                       
+train_checkpointer = common.Checkpointer(
+  ckpt_dir=checkpoint_dir,
+  max_to_keep=20,
+  agent=agent,
+  policy=agent.policy,
+  replay_buffer=replay_buffer,
+  global_step=train_step_counter
+)
+
 
 for _ in range(num_iterations):
 
@@ -192,15 +207,14 @@ for _ in range(num_iterations):
     avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
+    if avg_return > best_return + 2:
+      print("Found better model, saving this model")
+      train_checkpointer.save(train_step_counter)
+      best_return = avg_return
 
-plt.plot([1, 2, 3, 4])
-plt.ylabel('some numbers')
-plt.show()
+
 iterations = range(0, num_iterations + 1, eval_interval)
-plt.plot(iterations, returns)
-plt.ylabel('Average Return')
-plt.xlabel('Iterations')
-plt.ylim(top=250)
-print("showing...")
-plt.show()
-print("showed...")
+print("Iterations:")
+print(iterations)
+print("Returns:")
+print(returns)

@@ -11,3 +11,5 @@ grpcio==1.34.0
 numpy==1.19.2
 IPython
 matplotlib
+pyyaml
+h5py
