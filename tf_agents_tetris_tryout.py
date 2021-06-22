@@ -5,8 +5,7 @@ from pathlib import Path
 import tensorflow as tf
 import logging
 from datetime import datetime
-log_filename = 'logs/' + datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-logging.basicConfig(filename=log_filename, level=logging.DEBUG)
+
 
 from engine import TetrisEngine
 
@@ -27,6 +26,16 @@ from tf_agents.utils import common
 
 tf.compat.v1.enable_v2_behavior()
 checkpoint_dir = Path("./checkpoints")
+
+current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+log_filename = 'logs/' + current_time
+logging.basicConfig(filename=log_filename, level=logging.DEBUG)
+
+train_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/train'
+test_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/test'
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+
 
 # tf.config.gpu.set_per_process_memory_fraction(0.666)
 
@@ -205,20 +214,20 @@ for _ in range(num_iterations):
 
   if step % log_interval == 0:
     logging.info('step = {0}: loss = {1}'.format(step, train_loss))
+    with train_summary_writer.as_default():
+      tf.summary.scalar('loss', train_loss, step=step)
 
   if step % eval_interval == 0:
     avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     logging.info('step = {0}: Average Return = {1}'.format(step, avg_return))
+    with test_summary_writer.as_default():
+      tf.summary.scalar('avg return', avg_return, step=step)
+
     returns.append(avg_return)
     if avg_return > best_return + 2:
       logging.info('Found better model, saving this model')
       train_checkpointer.save(train_step_counter)
       best_return = avg_return
 
-
-iterations = range(0, num_iterations + 1, eval_interval)
-print("Iterations:")
-print(iterations)
-print("Returns:")
-print(returns)
+print("finished training")
