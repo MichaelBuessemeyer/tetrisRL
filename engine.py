@@ -215,6 +215,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         reward, done = self.step2(2)
         self._state = self.get_all_features()
         self.total_reward += reward
+        self.current_reward = reward
         if done:
             return ts.termination(self._state, reward)
         else:
@@ -273,6 +274,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         self.time = 0
         self.score = 0
         self.total_reward = 0
+        self.current_reward = 0
         self._new_piece()
         self.board = np.zeros_like(self.board)
         features = self.get_all_features()
@@ -340,5 +342,10 @@ class TetrisEngine(py_environment.PyEnvironment):
                                       ) + '|' for i in self.board.T])
         s += '\no' + '-' * self.width + 'o\n'
         self._set_piece(False)
-        s += 'Current Reward: ' + str(self.total_reward) + "\n"
+        s += 'Total Reward: ' + str(self.total_reward) + "\n"
+        s += 'Current Reward: ' + str(self.current_reward) + "\n"
+        s += 'Aggregated Height: ' + str(self.get_aggregated_height()) + "\n"
+        s += 'Bumpiness: ' + str(self.get_bumpiness()) + "\n"
+        s += 'Completed Lines: ' + str(self.completed_lines()) + "\n"
+        s += 'Hole Count: ' + str(self.get_hole_count()) + "\n"
         return s
