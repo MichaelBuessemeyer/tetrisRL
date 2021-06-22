@@ -1,9 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
-import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 import tensorflow as tf
+import logging
+from datetime import datetime
+log_filename = 'logs/' + datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+logging.basicConfig(filename=log_filename, level=logging.DEBUG)
 
 from engine import TetrisEngine
 
@@ -28,7 +31,7 @@ checkpoint_dir = Path("./checkpoints")
 # tf.config.gpu.set_per_process_memory_fraction(0.666)
 
 
-num_iterations = 10000000 # @param {type:"integer"}
+num_iterations = 100000000 # @param {type:"integer"}
 
 initial_collect_steps = 1000  # @param {type:"integer"} 
 collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -201,14 +204,15 @@ for _ in range(num_iterations):
   step = agent.train_step_counter.numpy()
 
   if step % log_interval == 0:
-    print('step = {0}: loss = {1}'.format(step, train_loss))
+    logging.info('step = {0}: loss = {1}'.format(step, train_loss))
 
   if step % eval_interval == 0:
     avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
+    logging.info('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
     if avg_return > best_return + 2:
-      print("Found better model, saving this model")
+      logging.info('Found better model, saving this model')
       train_checkpointer.save(train_step_counter)
       best_return = avg_return
 
