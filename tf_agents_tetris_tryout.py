@@ -6,6 +6,7 @@ import tensorflow as tf
 import logging
 from datetime import datetime
 import argparse
+import curses
 
 
 from engine import TetrisEngine
@@ -22,25 +23,13 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.trajectories import trajectory
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common
+from time import sleep
 
 
-
-tf.compat.v1.enable_v2_behavior()
-checkpoint_dir = Path("./checkpoints")
-
-current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-log_filename = 'logs/' + current_time
-logging.basicConfig(filename=log_filename, level=logging.DEBUG)
-
-train_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/train'
-test_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/test'
-train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-
-
-# tf.config.gpu.set_per_process_memory_fraction(0.666)
-
-
+# hyperparams
+current_epsilon = 1.0
+epsilon_decay = 0.9999
+epsilon_min = 0.1
 num_iterations = 100000000 # @param {type:"integer"}
 
 initial_collect_steps = 1000  # @param {type:"integer"} 
@@ -53,10 +42,24 @@ log_interval = 500  # @param {type:"integer"}
 
 num_eval_episodes = 50  # @param {type:"integer"}
 eval_interval = 2000  # @param {type:"integer"}
-
 width, height = 10, 20 # standard tetris friends rules
 
+
 def perform_training(args):
+  tf.compat.v1.enable_v2_behavior()
+  checkpoint_dir = Path("./checkpoints")
+
+  current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+  log_filename = 'logs/' + current_time
+  logging.basicConfig(filename=log_filename, level=logging.DEBUG)
+
+  train_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/train'
+  test_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/test'
+  train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+  test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+
+
+  # tf.config.gpu.set_per_process_memory_fraction(0.666)
 
   train_py_env = TetrisEngine(width, height)
   eval_py_env = TetrisEngine(width, height)
@@ -64,7 +67,7 @@ def perform_training(args):
   eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 
 
-  fc_layer_params = (100, 50)
+  fc_layer_params = (200, 100)
   action_tensor_spec = tensor_spec.from_spec(train_py_env.action_spec())
   num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
@@ -92,10 +95,6 @@ def perform_training(args):
   optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
   train_step_counter = tf.Variable(0)
-
-  current_epsilon = 1.0
-  epsilon_decay = 0.9999
-  epsilon_min = 0.1
 
   def get_eplison():
     global current_epsilon
@@ -193,15 +192,29 @@ def perform_training(args):
 
 
 
-  checkpoint_dir = Path("./checkpoints")                       
-  train_checkpointer = common.Checkpointer(
-    ckpt_dir=checkpoint_dir,
-    max_to_keep=20,
-    agent=agent,
-    policy=agent.policy,
-    replay_buffer=replay_buffer,
-    global_step=train_step_counter
-  )
+  checkpoint_dir = Path("./checkpoints")  
+  if args.use_checkpoints:                    
+    train_checkpointer = common.Checkpointer(
+      ckpt_dir=checkpoint_dir,
+      max_to_keep=20,
+      agent=agent,
+      policy=agent.policy,
+      replay_buffer=replay_buffer,
+      global_step=train_step_counter
+    )
+  screen = None
+  if args.render_env:
+    screen = curses.initscr()
+    curses.noecho()
+    curses.cbreak()
+
+  def render_env(env):
+    # Render
+    screen.clear()
+    # retrieving the original env from the tf env wrapper
+    screen.addstr(str(env.pyenv.envs[0]))
+    screen.addstr("Current Epsilon: {:.3f}".format(current_epsilon))
+    screen.refresh()
 
 
   for _ in range(num_iterations):
@@ -214,30 +227,41 @@ def perform_training(args):
     train_loss = agent.train(experience).loss
 
     step = agent.train_step_counter.numpy()
+    if args.render_env:
+      render_env(train_env)
+      sleep(args.render_env_sleep_time)
 
     if step % log_interval == 0:
-      logging.info('step = {0}: loss = {1}'.format(step, train_loss))
       with train_summary_writer.as_default():
         tf.summary.scalar('loss', train_loss, step=step)
 
     if step % eval_interval == 0:
       avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-      print('step = {0}: Average Return = {1}'.format(step, avg_return))
-      logging.info('step = {0}: Average Return = {1}'.format(step, avg_return))
       with test_summary_writer.as_default():
         tf.summary.scalar('avg return', avg_return, step=step)
 
       returns.append(avg_return)
-      if avg_return > best_return + 2 and args.save_checkpoints:
+      if avg_return > best_return + 2 and args.save_checkpoints and args.use_checkpoints:
         logging.info('Found better model, saving this model')
         train_checkpointer.save(train_step_counter)
         best_return = avg_return
 
   print("finished training")
+  if args.render_env:
+    curses.nocbreak()
+    screen.keypad(False)
+    curses.echo()
+    curses.endwin()
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
                     action="store_true")
+  parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
+                    action="store_true")
+  parser.add_argument("--render_env", action="store_true",
+                    help="To enable rendering the env after each training step")
+  parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
+                    help="The time to wait after each env render.")
   args = parser.parse_args()
   perform_training(args)
