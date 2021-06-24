@@ -97,16 +97,18 @@ class TetrisEngine(py_environment.PyEnvironment):
     def __init__(self, width, height):
         self.width = width
         self.height = height
-        self.board = np.zeros(shape=(width, height), dtype=np.float)
+        self.board = np.zeros(shape=(width, height), dtype=np.int32)
         # We have 4 rotations and width many columns where a tetromino can be placed.
         # Thus a one dimensional action space goes from 0 to (4 * width) - 1
         self._action_spec = array_spec.BoundedArraySpec(
             shape=(), dtype=np.int32, minimum=0, maximum=(4 * width) - 1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(5,), dtype=np.int32, minimum=[0, 0, 0, 0, 0],
-            maximum=[(width*height)+1, (height * (width-1))+1, height + 1, int(width * height/2) + 1, 7], name='observation')
-            
-        self._state = np.zeros(5)
+            shape=(self.width * self.height + 1,),
+            dtype=np.int32,
+            minimum=np.append(np.zeros(self.width * self.height), 0).astype(np.int32),
+            maximum=np.append(np.ones(self.width * self.height), 6).astype(np.int32),
+            name='observation'
+        )
 
         # actions are triggered by letters
         self.value_action_map = {
@@ -213,7 +215,7 @@ class TetrisEngine(py_environment.PyEnvironment):
                     self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
         reward, done = self.step2(2)
-        self._state = self.get_all_features()
+        self._state = np.append(self.board.flatten(), self.tetromino).astype(np.int32)
         if done:
             return ts.termination(self._state, reward)
         else:
@@ -274,8 +276,8 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._new_piece()
         self.board = np.zeros_like(self.board)
         features = self.get_all_features()
-        self._state = features
-        return features
+        self._state = np.append(self.board.flatten(), self.tetromino).astype(np.int32)
+        return self._state
 
     ###### Feature Section #######
     def get_all_features(self):
