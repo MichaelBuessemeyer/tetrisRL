@@ -3,6 +3,8 @@ build
 *.egg-info
 dist
 checkpoints
+venv
+.venv
 logs/
 tensorboard/
 .vscode
