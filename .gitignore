@@ -3,3 +3,6 @@ build
 *.egg-info
 dist
 checkpoints
+logs/
+tensorboard/
+.vscode
