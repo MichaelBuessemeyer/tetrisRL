@@ -4,4 +4,7 @@ build
 dist
 checkpoints
 venv
-logs
+.venv
+logs/
+tensorboard/
+.vscode

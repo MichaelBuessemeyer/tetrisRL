@@ -17,7 +17,6 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 
-from gym import spaces
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -131,6 +130,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         self.shape = None
         self.tetromino = None
         self.n_deaths = 0
+        self.total_reward = 0
 
         # used for generating shapes
         self._shape_counts = [0] * len(shapes)
@@ -216,6 +216,8 @@ class TetrisEngine(py_environment.PyEnvironment):
         # Hopefully this position is valid :D
         reward, done = self.step2(2)
         self._state = np.append(self.board.flatten(), self.tetromino).astype(np.int32)
+        self.total_reward += reward
+        self.current_reward = reward
         if done:
             return ts.termination(self._state, reward)
         else:
@@ -273,6 +275,8 @@ class TetrisEngine(py_environment.PyEnvironment):
     def clear(self):
         self.time = 0
         self.score = 0
+        self.total_reward = 0
+        self.current_reward = 0
         self._new_piece()
         self.board = np.zeros_like(self.board)
         features = self.get_all_features()
@@ -338,6 +342,12 @@ class TetrisEngine(py_environment.PyEnvironment):
         s = 'o' + '-' * self.width + 'o\n'
         s += '\n'.join(['|' + ''.join(['X' if j else ' ' for j in i]
                                       ) + '|' for i in self.board.T])
-        s += '\no' + '-' * self.width + 'o'
+        s += '\no' + '-' * self.width + 'o\n'
         self._set_piece(False)
+        s += 'Total Reward: ' + str(self.total_reward) + "\n"
+        s += 'Current Reward: ' + str(self.current_reward) + "\n"
+        s += 'Aggregated Height: ' + str(self.get_aggregated_height()) + "\n"
+        s += 'Bumpiness: ' + str(self.get_bumpiness()) + "\n"
+        s += 'Completed Lines: ' + str(self.completed_lines()) + "\n"
+        s += 'Hole Count: ' + str(self.get_hole_count()) + "\n"
         return s
