@@ -4,6 +4,7 @@ import random
 
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.eager.function import _shape_relaxed_type_for_composite_tensor
 
 from tf_agents.environments import py_environment
 from tf_agents.environments import tf_environment
@@ -16,7 +17,7 @@ from tf_agents.trajectories import time_step as ts
 
 tf.compat.v1.enable_v2_behavior()
 
-
+USE_TF_AGENTS = False
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -100,7 +101,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         # We have 4 rotations and width many columns where a tetromino can be placed.
         # Thus a one dimensional action space goes from 0 to (4 * width) - 1
         self._action_spec = array_spec.BoundedArraySpec(
-            shape=(), dtype=np.int32, minimum=0, maximum=(4 * width) - 1, name='action')
+            shape=(), dtype=np.int32, minimum=0, maximum=(ROTATION_ACTION_COUNT * width) - 1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(self.width * self.height + 1,),
             dtype=np.int32,
@@ -137,6 +138,14 @@ class TetrisEngine(py_environment.PyEnvironment):
 
         # clear after initializing
         self.clear()
+
+    def get_action_count(self):
+        return ROTATION_ACTION_COUNT * self.width
+
+    def get_observation_shape(self):
+        # We have the full field: width * height and "image" 
+        # that is filled with the ids of the current tetromino. 
+        return (2, self.width, self.height)
 
     def action_spec(self):
         return self._action_spec
@@ -188,6 +197,17 @@ class TetrisEngine(py_environment.PyEnvironment):
 
         return valid_action_sum
 
+    def get_state(self):
+        if USE_TF_AGENTS:
+            return np.append(self.board.flatten(), self.tetromino).astype(np.int32)
+        else:
+            state = np.ones(shape=(2, self.width, self.height))
+            state[0] = np.copy(self.board)
+            state[1] *= self.tetromino
+            print("state has shape", state.shape)
+            return state
+
+
     def _step(self, action):
         # rotation: 0 - don't rotate, 1..3 - rotate n times left
         # first rotate to the correct orientation
@@ -215,25 +235,16 @@ class TetrisEngine(py_environment.PyEnvironment):
                     self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
         reward, done = self.step2(2)
-        self._state = np.append(self.board.flatten(), self.tetromino).astype(np.int32)
         self.total_reward += reward
         self.current_reward = reward
-        if done:
-            return ts.termination(self._state, reward)
+        self._state = self.get_state()
+        if USE_TF_AGENTS: 
+            if done:
+                return ts.termination(self._state, reward)
+            else:
+                return ts.transition(self._state, reward, discount=1.0)
         else:
-            return ts.transition(self._state, reward, discount=1.0)
-        # return features, reward, done, {}
-
-    # def multi_step(self, actions):
-    #     full_reward = 0
-    #     done = False
-    #     for action in actions:
-    #         _, reward, done = self.step(action)
-    #         full_reward += reward
-    #     # Do the hard drop
-    #     state, reward, done = self.step(2)
-    #     full_reward += reward
-    #     return state, full_reward, done
+            return self.state, reward, done, {}
 
     def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
@@ -280,7 +291,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._new_piece()
         self.board = np.zeros_like(self.board)
         features = self.get_all_features()
-        self._state = np.append(self.board.flatten(), self.tetromino).astype(np.int32)
+        self._state = self.get_state()
         return self._state
 
     ###### Feature Section #######
