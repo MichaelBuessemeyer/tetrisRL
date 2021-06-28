@@ -145,7 +145,7 @@ class TetrisEngine(py_environment.PyEnvironment):
     def get_observation_shape(self):
         # We have the full field: width * height and "image" 
         # that is filled with the ids of the current tetromino. 
-        return (2, self.width, self.height)
+        return (self.width, self.height, 2)
 
     def action_spec(self):
         return self._action_spec
@@ -201,9 +201,9 @@ class TetrisEngine(py_environment.PyEnvironment):
         if USE_TF_AGENTS:
             return np.append(self.board.flatten(), self.tetromino).astype(np.int32)
         else:
-            state = np.ones(shape=(2, self.width, self.height))
-            state[0] = np.copy(self.board)
-            state[1] *= self.tetromino
+            state = np.ones(shape=self.get_observation_shape())
+            state[:,:,0] = np.copy(self.board)
+            state[:,:,1] *= self.tetromino
             print("state has shape", state.shape)
             return state
 

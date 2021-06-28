@@ -97,16 +97,17 @@ is chosen by selecting the larger of the four Q-values predicted in the output l
 """
 def create_q_model(env: TetrisEngine):
     # Network defined by the Deepmind paper
-    inputs = layers.Input(shape=env.get_observation_space())
+    print("shape", env.get_observation_shape())
+    inputs = layers.Input(shape=env.get_observation_shape())
 
     # Convolutions on the frames on the screen
-    layer1 = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
-    layer2 = layers.Conv2D(64, 4, strides=2, activation="relu")(layer1)
-    layer3 = layers.Conv2D(64, 3, strides=1, activation="relu")(layer2)
+    layer1 = layers.Conv2D(4, 8, strides=1, activation="relu")(inputs)
+    layer2 = layers.Conv2D(8, 4, strides=1, activation="relu")(layer1)
+    layer3 = layers.Conv2D(16, 4, strides=1, activation="relu")(layer2)
 
     layer4 = layers.Flatten()(layer3)
 
-    layer5 = layers.Dense(512, activation="relu")(layer4)
+    layer5 = layers.Dense(32, activation="relu")(layer4)
     action = layers.Dense(env.get_action_count(), activation="linear")(layer5)
 
     return keras.Model(inputs=inputs, outputs=action)
@@ -123,15 +124,22 @@ def render_env(env, screen):
 """
 ## Train
 """
-def perform_training():
+def perform_training(args):
+
+    screen = None
+    if args.render_env:
+        screen = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+
     # The first model makes the predictions for Q-values which are used to
     # make a action.
     env = get_env()
-    model = create_q_model()
+    model = create_q_model(env)
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
     # loss between the Q-values is calculated the target Q-value is stable.
-    model_target = create_q_model()
+    model_target = create_q_model(env)
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
     optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
@@ -271,6 +279,22 @@ def perform_training():
         if running_reward > 400:  # Condition to consider the task solved
             print("Solved at episode {}!".format(episode_count))
             break
+
+        if args.render_env:
+            render_env(env, screen)
+
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
+                    action="store_true")
+  parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
+                    action="store_true")
+  parser.add_argument("--render_env", action="store_true",
+                    help="To enable rendering the env after each training step")
+  parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
+                    help="The time to wait after each env render.")
+  args = parser.parse_args()
+  perform_training(args)
 
 """
 ## Visualizations
