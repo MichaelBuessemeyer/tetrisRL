@@ -70,18 +70,9 @@ import curses
 from engine import TetrisEngine
 from time import sleep
 
-# Configuration paramaters for the whole setup
-seed = 42
-gamma = 0.99  # Discount factor for past rewards
-epsilon = 1.0  # Epsilon greedy parameter
-epsilon_min = 0.1  # Minimum epsilon greedy parameter
-epsilon_max = 1.0  # Maximum epsilon greedy parameter
-epsilon_interval = epsilon_max - epsilon_min  # Rate at which to reduce chance of random action being taken
-batch_size = 32  # Size of batch taken from replay buffer
-max_steps_per_episode = 10000
-width, height = 10, 20 # standard tetris friends rules
 
-def get_env():
+
+def get_env(width, height):
     env = TetrisEngine(width, height)
     return env
 
@@ -97,23 +88,22 @@ is chosen by selecting the larger of the four Q-values predicted in the output l
 """
 def create_q_model(env: TetrisEngine):
     # Network defined by the Deepmind paper
-    print("shape", env.get_observation_shape())
     inputs = layers.Input(shape=env.get_observation_shape())
 
     # Convolutions on the frames on the screen
-    layer1 = layers.Conv2D(4, 8, strides=1, activation="relu")(inputs)
+    layer1 = layers.Conv2D(4, 8, strides=1, activation="relu", padding="same")(inputs)
     layer2 = layers.Conv2D(8, 4, strides=1, activation="relu")(layer1)
     layer3 = layers.Conv2D(16, 4, strides=1, activation="relu")(layer2)
 
     layer4 = layers.Flatten()(layer3)
 
-    layer5 = layers.Dense(32, activation="relu")(layer4)
+    layer5 = layers.Dense(128, activation="relu")(layer4)
     action = layers.Dense(env.get_action_count(), activation="linear")(layer5)
 
     return keras.Model(inputs=inputs, outputs=action)
 
 # For CLI Animation
-def render_env(env, screen):
+def render_env(env, screen, current_epsilon):
     # Render
     screen.clear()
     # retrieving the original env from the tf env wrapper
@@ -126,6 +116,17 @@ def render_env(env, screen):
 """
 def perform_training(args):
 
+    # Configuration paramaters for the whole setup
+    seed = 42
+    gamma = 0.99  # Discount factor for past rewards
+    epsilon = 1.0  # Epsilon greedy parameter
+    epsilon_min = 0.1  # Minimum epsilon greedy parameter
+    epsilon_max = 1.0  # Maximum epsilon greedy parameter
+    epsilon_interval = epsilon_max - epsilon_min  # Rate at which to reduce chance of random action being taken
+    batch_size = 32  # Size of batch taken from replay buffer
+    max_steps_per_episode = 10000
+    width, height = 10, 20 # standard tetris friends rules
+
     screen = None
     if args.render_env:
         screen = curses.initscr()
@@ -134,7 +135,7 @@ def perform_training(args):
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
-    env = get_env()
+    env = get_env(width, height)
     model = create_q_model(env)
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
@@ -169,7 +170,7 @@ def perform_training(args):
     loss_function = keras.losses.Huber()
 
     while True:  # Run until solved
-        state = np.array(env.reset())
+        state = env.do_reset()
         episode_reward = 0
 
         for timestep in range(1, max_steps_per_episode):
@@ -184,7 +185,7 @@ def perform_training(args):
             else:
                 # Predict action Q-values
                 # From environment state
-                state_tensor = tf.convert_to_tensor(state)
+                state_tensor = tf.convert_to_tensor(state, dtype=tf.uint16)
                 state_tensor = tf.expand_dims(state_tensor, 0)
                 action_probs = model(state_tensor, training=False)
                 # Take best action
@@ -195,8 +196,7 @@ def perform_training(args):
             epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
-            state_next, reward, done, _ = env.step(action)
-            state_next = np.array(state_next)
+            state_next, reward, done, _ = env._step(action)
 
             episode_reward += reward
 
@@ -215,8 +215,8 @@ def perform_training(args):
                 indices = np.random.choice(range(len(done_history)), size=batch_size)
 
                 # Using list comprehension to sample from replay buffer
-                state_sample = np.array([state_history[i] for i in indices])
-                state_next_sample = np.array([state_next_history[i] for i in indices])
+                state_sample = tf.convert_to_tensor([state_history[i] for i in indices], dtype=tf.uint16)
+                state_next_sample = tf.convert_to_tensor([state_next_history[i] for i in indices], dtype=tf.uint16)
                 rewards_sample = [rewards_history[i] for i in indices]
                 action_sample = [action_history[i] for i in indices]
                 done_sample = tf.convert_to_tensor(
@@ -281,7 +281,7 @@ def perform_training(args):
             break
 
         if args.render_env:
-            render_env(env, screen)
+            render_env(env, screen, epsilon)
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()

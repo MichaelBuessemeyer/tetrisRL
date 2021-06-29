@@ -199,12 +199,11 @@ class TetrisEngine(py_environment.PyEnvironment):
 
     def get_state(self):
         if USE_TF_AGENTS:
-            return np.append(self.board.flatten(), self.tetromino).astype(np.int32)
+            return np.append(self.board.flatten(), self.tetromino).astype(np.uint16)
         else:
-            state = np.ones(shape=self.get_observation_shape())
+            state = np.ones(shape=self.get_observation_shape(), dtype=np.uint16)
             state[:,:,0] = np.copy(self.board)
             state[:,:,1] *= self.tetromino
-            print("state has shape", state.shape)
             return state
 
 
@@ -244,7 +243,7 @@ class TetrisEngine(py_environment.PyEnvironment):
             else:
                 return ts.transition(self._state, reward, discount=1.0)
         else:
-            return self.state, reward, done, {}
+            return self._state, reward, done, {}
 
     def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
@@ -281,6 +280,10 @@ class TetrisEngine(py_environment.PyEnvironment):
     def _reset(self):
         self.clear()
         return ts.restart(self._state)
+    
+    def do_reset(self):
+        self.clear()
+        return self._state
 
 
     def clear(self):
