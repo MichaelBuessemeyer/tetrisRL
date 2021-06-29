@@ -70,12 +70,36 @@ import curses
 from engine import TetrisEngine
 from time import sleep
 
-
+num_eval_episodes = 50
+eval_interval = 2000
 
 def get_env(width, height):
     env = TetrisEngine(width, height)
     return env
 
+def compute_avg_return(model, environment, num_episodes=10):
+
+    total_return = 0.0
+    for _ in range(num_episodes):
+        state = environment.do_reset()
+        episode_return = 0.0
+        done = False
+
+        while not done:
+            # Predict action Q-values
+            # From environment state
+            state_tensor = tf.convert_to_tensor(state, dtype=tf.uint16)
+            state_tensor = tf.expand_dims(state_tensor, 0)
+            action_probs = model(state_tensor, training=False)
+            # Take best action
+            action = tf.argmax(action_probs[0]).numpy()
+
+            state, reward, done, _ = environment._step(action)
+            episode_return += reward
+        total_return += episode_return
+
+    avg_return = total_return / num_episodes
+    return avg_return
 
 """
 ## Implement the Deep Q-Network
@@ -106,8 +130,8 @@ def create_q_model(env: TetrisEngine):
 def render_env(env, screen, current_epsilon):
     # Render
     screen.clear()
-    # retrieving the original env from the tf env wrapper
-    screen.addstr(str(env.pyenv.envs[0]))
+    # TODO
+    screen.addstr(str(env))
     screen.addstr("Current Epsilon: {:.3f}".format(current_epsilon))
     screen.refresh()
 
@@ -128,11 +152,11 @@ def perform_training(args):
     width, height = 10, 20 # standard tetris friends rules
 
     current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-    train_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/train'
-    # test_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/test'
+    train_log_dir = 'tensorboard/keras_dqn/' + current_time + '/train'
+    test_log_dir = 'tensorboard/keras_dqn/' + current_time + '/test'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     # TODO: Add a test env and use it for evaluation
-    # test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+    test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     screen = None
     if args.render_env:
@@ -142,12 +166,13 @@ def perform_training(args):
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
-    env = get_env(width, height)
-    model = create_q_model(env)
+    train_env = get_env(width, height)
+    test_env = get_env(width, height)
+    model = create_q_model(train_env)
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
     # loss between the Q-values is calculated the target Q-value is stable.
-    model_target = create_q_model(env)
+    model_target = create_q_model(train_env)
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
     optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
@@ -177,7 +202,7 @@ def perform_training(args):
     loss_function = keras.losses.Huber()
 
     while True:  # Run until solved
-        state = env.do_reset()
+        state = train_env.do_reset()
         episode_reward = 0
 
         for timestep in range(1, max_steps_per_episode):
@@ -188,7 +213,7 @@ def perform_training(args):
             # Use epsilon-greedy for exploration
             if step_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                 # Take random action
-                action = np.random.choice(env.get_action_count())
+                action = np.random.choice(train_env.get_action_count())
             else:
                 # Predict action Q-values
                 # From environment state
@@ -203,7 +228,7 @@ def perform_training(args):
             epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
-            state_next, reward, done, _ = env._step(action)
+            state_next, reward, done, _ = train_env._step(action)
 
             episode_reward += reward
 
@@ -242,7 +267,7 @@ def perform_training(args):
                 updated_q_values = updated_q_values * (1 - done_sample) - done_sample
 
                 # Create a mask so we only calculate loss on the updated Q-values
-                masks = tf.one_hot(action_sample, env.get_action_count())
+                masks = tf.one_hot(action_sample, train_env.get_action_count())
 
                 with tf.GradientTape() as tape:
                     # Train the model on the states and updated Q-values
@@ -272,6 +297,11 @@ def perform_training(args):
                 del action_history[:1]
                 del done_history[:1]
 
+            if step_count % eval_interval == 0:
+                avg_return = compute_avg_return(model, test_env, num_eval_episodes)
+                with test_summary_writer.as_default():
+                    tf.summary.scalar('avg return', avg_return, step=step_count)
+
             if done:
                 with train_summary_writer.as_default():
                     tf.summary.scalar('avg return', running_reward, step=step_count)
@@ -290,7 +320,7 @@ def perform_training(args):
             break
 
         if args.render_env:
-            render_env(env, screen, epsilon)
+            render_env(train_env, screen, epsilon)
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
