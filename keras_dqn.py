@@ -127,6 +127,13 @@ def perform_training(args):
     max_steps_per_episode = 10000
     width, height = 10, 20 # standard tetris friends rules
 
+    current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+    train_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/train'
+    # test_log_dir = 'tensorboard/tf_agents_tryout/' + current_time + '/test'
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+    # TODO: Add a test env and use it for evaluation
+    # test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+
     screen = None
     if args.render_env:
         screen = curses.initscr()
@@ -266,6 +273,8 @@ def perform_training(args):
                 del done_history[:1]
 
             if done:
+                with train_summary_writer.as_default():
+                    tf.summary.scalar('avg return', running_reward, step=step_count)
                 break
 
         # Update running reward to check condition for solving
