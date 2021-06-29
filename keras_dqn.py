@@ -140,22 +140,19 @@ def render_env(env, screen, current_epsilon):
 """
 def perform_training(args):
 
-    # Configuration paramaters for the whole setup
-    seed = 42
-    gamma = 0.99  # Discount factor for past rewards
-    epsilon = 1.0  # Epsilon greedy parameter
-    epsilon_min = 0.1  # Minimum epsilon greedy parameter
-    epsilon_max = 1.0  # Maximum epsilon greedy parameter
+    gamma = args.gamma  # Discount factor for past rewards
+    epsilon = args.epsilon  # Epsilon greedy parameter
+    epsilon_min = args.epsilon_min  # Minimum epsilon greedy parameter
+    epsilon_max = args.epsilon_max  # Maximum epsilon greedy parameter
     epsilon_interval = epsilon_max - epsilon_min  # Rate at which to reduce chance of random action being taken
-    batch_size = 32  # Size of batch taken from replay buffer
-    max_steps_per_episode = 10000
+    batch_size = args.batch_size  # Size of batch taken from replay buffer
+    max_steps_per_episode = args.max_steps_per_episode
     width, height = 10, 20 # standard tetris friends rules
 
     current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-    train_log_dir = 'tensorboard/keras_dqn/' + current_time + '/train'
-    test_log_dir = 'tensorboard/keras_dqn/' + current_time + '/test'
+    train_log_dir = 'tensorboard/keras_dqn/' + args.trainings_name + "_" + current_time + '/train'
+    test_log_dir = 'tensorboard/keras_dqn/' + args.trainings_name + "_" + current_time + '/test'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-    # TODO: Add a test env and use it for evaluation
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     screen = None
@@ -188,18 +185,18 @@ def perform_training(args):
     episode_count = 0
     step_count = 0
     # Number of frames to take random action and observe output
-    epsilon_random_frames = 50000
+    epsilon_random_frames = args.epsilon_random_frames
     # Number of frames for exploration
-    epsilon_greedy_frames = 1000000.0
+    epsilon_greedy_frames = args.epsilon_greedy_frames
     # Maximum replay length
-    # Note: The Deepmind paper suggests 1000000 however this causes memory issues
-    max_memory_length = 100000
+    max_memory_length = args.max_memory_length
     # Train the model after 4 actions
-    update_after_actions = 4
+    update_after_actions = args.update_after_actions
     # How often to update the target network
-    update_target_network = 10000
+    update_target_network = args.update_target_network
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
+
 
     while True:  # Run until solved
         state = train_env.do_reset()
@@ -277,7 +274,9 @@ def perform_training(args):
                     q_action = tf.reduce_sum(tf.multiply(q_values, masks), axis=1)
                     # Calculate loss between new Q-value and old Q-value
                     loss = loss_function(updated_q_values, q_action)
-
+                # log the current loss    
+                # with train_summary_writer.as_default():
+                #    tf.summary.scalar('loss', loss[0], step=step_count)
                 # Backpropagation
                 grads = tape.gradient(loss, model.trainable_variables)
                 optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -304,8 +303,11 @@ def perform_training(args):
 
             if done:
                 with train_summary_writer.as_default():
-                    tf.summary.scalar('avg return', running_reward, step=step_count)
+                    tf.summary.scalar('return', running_reward, step=step_count)
                 break
+
+            if args.render_env and step_count > epsilon_random_frames:
+                render_env(train_env, screen, epsilon)
 
         # Update running reward to check condition for solving
         episode_reward_history.append(episode_reward)
@@ -319,21 +321,42 @@ def perform_training(args):
             print("Solved at episode {}!".format(episode_count))
             break
 
-        if args.render_env:
-            render_env(train_env, screen, epsilon)
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
                     action="store_true")
-  parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
+    parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
                     action="store_true")
-  parser.add_argument("--render_env", action="store_true",
+    parser.add_argument("--render_env", action="store_true",
                     help="To enable rendering the env after each training step")
-  parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
+    parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
                     help="The time to wait after each env render.")
-  args = parser.parse_args()
-  perform_training(args)
+    parser.add_argument("--trainings_name", type=str, default="default",
+                    help="The time to wait after each env render.")
+    parser.add_argument("--epsilon_random_frames", type=int, default=50000,
+                    help="Number of frames to take random action and observe output")
+    parser.add_argument("--epsilon_greedy_frames", type=int, default=1000000,
+                    help="Number of frames for exploration")
+    parser.add_argument("--max_memory_length", type=int, default=100000,
+                    help="Maximum replay length")
+    parser.add_argument("--update_after_actions", type=int, default=4,
+                    help="Train the model after update_after_actions many actions")
+    parser.add_argument("--update_target_network", type=int, default=10000,
+                    help="How often to update the target network")
+    parser.add_argument("--gamma", type=float, default=0.99,
+                    help="Discount factor for past rewards")
+    parser.add_argument("--epsilon_min", type=float, default=0.1,
+                    help="Minimum for the epsilon greed factor")
+    parser.add_argument("--epsilon_max", type=int, default=1.0,
+                    help="Maximum for the epsilon greed factor")
+    parser.add_argument("--batch_size", type=int, default=32,
+                    help="Size of batch taken from replay buffer")
+    parser.add_argument("--max_steps_per_episode", type=int, default=10000,
+                    help="Maximum steps an episode can have before resetting the environment")
+
+    args = parser.parse_args()
+    perform_training(args)
 
 """
 ## Visualizations
