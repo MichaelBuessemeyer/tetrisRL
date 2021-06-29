@@ -18,6 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
+ALWAYS_USE_PIECE = 6
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -154,6 +155,11 @@ class TetrisEngine(py_environment.PyEnvironment):
         return self._observation_spec
 
     def _choose_shape(self):
+        if ALWAYS_USE_PIECE:
+            self._shape_counts[ALWAYS_USE_PIECE] += 1
+            self.tetromino = ALWAYS_USE_PIECE
+            return shapes[shape_names[ALWAYS_USE_PIECE]]
+        
         maxm = max(self._shape_counts)
         m = [5 + maxm - x for x in self._shape_counts]
         r = random.randint(1, sum(m))
@@ -233,7 +239,7 @@ class TetrisEngine(py_environment.PyEnvironment):
                 self.shape, self.anchor = left(
                     self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
-        reward, done = self.step2(2)
+        reward, done, cleared_lines = self.step2(2)
         self.total_reward += reward
         self.current_reward = reward
         self._state = self.get_state()
@@ -243,7 +249,7 @@ class TetrisEngine(py_environment.PyEnvironment):
             else:
                 return ts.transition(self._state, reward, discount=1.0)
         else:
-            return self._state, reward, done, {}
+            return self._state, reward, done, {"cleared_lines" : cleared_lines}
 
     def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
@@ -258,11 +264,14 @@ class TetrisEngine(py_environment.PyEnvironment):
         # reward = self.count_valid_actions()
         #reward = random.randint(0, 0)
         reward = 1
+        cleared_lines = 0
 
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            reward += 100 * self._clear_lines()
+            # reward += 100 * self._clear_lines()
+            reward = self.get_reward()
+            cleared_lines = self._clear_lines()
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
@@ -275,7 +284,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         # self._set_piece(True)
         # state = np.copy(self.board)
         # self._set_piece(False)
-        return reward, done
+        return reward, done, cleared_lines
 
     def _reset(self):
         self.clear()
@@ -293,20 +302,31 @@ class TetrisEngine(py_environment.PyEnvironment):
         self.current_reward = 0
         self._new_piece()
         self.board = np.zeros_like(self.board)
-        features = self.get_all_features()
         self._state = self.get_state()
         return self._state
 
+    def get_reward(self):
+        features = self.get_all_features()
+        aggregated_height, bumpiness, completed_lines, hole_count = features
+        # These constants were taken from the near perfect player blockpost
+        # https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/
+        a = -0.510066
+        b = 0.760666
+        c = -0.35663
+        d = -0.184483
+        reward = a * aggregated_height + b * completed_lines + c * hole_count + d * bumpiness
+        return reward
+
+
     ###### Feature Section #######
     def get_all_features(self):
-        features = np.zeros(5, dtype=np.int32)
+        features = np.zeros(4, dtype=np.int32)
         self._set_piece(False)
         features[0] = self.get_aggregated_height()
         features[1] = self.get_bumpiness()
         features[2] = self.completed_lines()
         features[3] = self.get_hole_count()
-        features[4] = self.tetromino
-        # self._set_piece(True)
+        self._set_piece(True)
         return features
 
     def get_bumpiness(self):
@@ -358,8 +378,8 @@ class TetrisEngine(py_environment.PyEnvironment):
                                       ) + '|' for i in self.board.T])
         s += '\no' + '-' * self.width + 'o\n'
         self._set_piece(False)
-        s += 'Total Reward: ' + str(self.total_reward) + "\n"
-        s += 'Current Reward: ' + str(self.current_reward) + "\n"
+        s += 'Total Reward: {:.3f}\n'.format(self.total_reward)
+        s += 'Current Reward: {:.3f}\n'.format(self.current_reward)
         s += 'Aggregated Height: ' + str(self.get_aggregated_height()) + "\n"
         s += 'Bumpiness: ' + str(self.get_bumpiness()) + "\n"
         s += 'Completed Lines: ' + str(self.completed_lines()) + "\n"

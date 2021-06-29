@@ -143,4 +143,4 @@ A list of links we used for this project:
 
 - <http://cs231n.stanford.edu/reports/2016/pdfs/121_Report.pdf>
 
-- https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/
+- <https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/>

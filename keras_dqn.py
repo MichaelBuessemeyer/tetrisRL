@@ -84,8 +84,9 @@ def compute_avg_return(model, environment, num_episodes=10):
         state = environment.do_reset()
         episode_return = 0.0
         done = False
-
-        while not done:
+        counter = 0
+        MAX_EPISODE_LENGTH = 200
+        while not done and counter < MAX_EPISODE_LENGTH:
             # Predict action Q-values
             # From environment state
             state_tensor = tf.convert_to_tensor(state, dtype=tf.uint16)
@@ -96,6 +97,7 @@ def compute_avg_return(model, environment, num_episodes=10):
 
             state, reward, done, _ = environment._step(action)
             episode_return += reward
+            counter += 1
         total_return += episode_return
 
     avg_return = total_return / num_episodes
@@ -127,12 +129,14 @@ def create_q_model(env: TetrisEngine):
     return keras.Model(inputs=inputs, outputs=action)
 
 # For CLI Animation
-def render_env(env, screen, current_epsilon):
+def render_env(env, screen, current_epsilon, step_count, using_model, total_cleared_lines):
     # Render
     screen.clear()
-    # TODO
     screen.addstr(str(env))
-    screen.addstr("Current Epsilon: {:.3f}".format(current_epsilon))
+    screen.addstr("Current cleared lines: {}\n".format(total_cleared_lines))
+    screen.addstr("Current Epsilon: {:.3f}\n".format(current_epsilon))
+    screen.addstr("Current Steps: {}\n".format(step_count))
+    screen.addstr("Used Model?: {}\n".format(using_model))
     screen.refresh()
 
 """
@@ -141,7 +145,7 @@ def render_env(env, screen, current_epsilon):
 def perform_training(args):
 
     gamma = args.gamma  # Discount factor for past rewards
-    epsilon = args.epsilon  # Epsilon greedy parameter
+    epsilon = args.epsilon_max  # Epsilon greedy parameter
     epsilon_min = args.epsilon_min  # Minimum epsilon greedy parameter
     epsilon_max = args.epsilon_max  # Maximum epsilon greedy parameter
     epsilon_interval = epsilon_max - epsilon_min  # Rate at which to reduce chance of random action being taken
@@ -201,12 +205,12 @@ def perform_training(args):
     while True:  # Run until solved
         state = train_env.do_reset()
         episode_reward = 0
-
+        total_cleared_lines = 0 
         for timestep in range(1, max_steps_per_episode):
             # env.render(); Adding this line would show the attempts
             # of the agent in a pop up window.
             step_count += 1
-
+            using_model = False
             # Use epsilon-greedy for exploration
             if step_count < epsilon_random_frames or epsilon > np.random.rand(1)[0]:
                 # Take random action
@@ -214,6 +218,7 @@ def perform_training(args):
             else:
                 # Predict action Q-values
                 # From environment state
+                using_model = True
                 state_tensor = tf.convert_to_tensor(state, dtype=tf.uint16)
                 state_tensor = tf.expand_dims(state_tensor, 0)
                 action_probs = model(state_tensor, training=False)
@@ -225,7 +230,8 @@ def perform_training(args):
             epsilon = max(epsilon, epsilon_min)
 
             # Apply the sampled action in our environment
-            state_next, reward, done, _ = train_env._step(action)
+            state_next, reward, done, additional_info = train_env._step(action)
+            total_cleared_lines += additional_info["cleared_lines"]
 
             episode_reward += reward
 
@@ -296,7 +302,7 @@ def perform_training(args):
                 del action_history[:1]
                 del done_history[:1]
 
-            if step_count % eval_interval == 0:
+            if step_count % eval_interval == 0 and step_count > epsilon_random_frames:
                 avg_return = compute_avg_return(model, test_env, num_eval_episodes)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('avg return', avg_return, step=step_count)
@@ -304,10 +310,11 @@ def perform_training(args):
             if done:
                 with train_summary_writer.as_default():
                     tf.summary.scalar('return', running_reward, step=step_count)
+                    tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=step_count)
                 break
 
-            if args.render_env and step_count > epsilon_random_frames:
-                render_env(train_env, screen, epsilon)
+            if args.render_env:
+                render_env(train_env, screen, epsilon, step_count, using_model, total_cleared_lines)
 
         # Update running reward to check condition for solving
         episode_reward_history.append(episode_reward)
@@ -317,7 +324,7 @@ def perform_training(args):
 
         episode_count += 1
 
-        if running_reward > 400:  # Condition to consider the task solved
+        if running_reward > 100:  # Condition to consider the task solved
             print("Solved at episode {}!".format(episode_count))
             break
 
