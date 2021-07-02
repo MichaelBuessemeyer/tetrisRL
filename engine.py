@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 6
+ALWAYS_USE_PIECE = 5
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
