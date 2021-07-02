@@ -270,8 +270,8 @@ class TetrisEngine(py_environment.PyEnvironment):
         if self._has_dropped():
             self._set_piece(True)
             cleared_lines = self._clear_lines()
-            reward += 100 * cleared_lines**2
-            # reward = self.get_reward()
+            # reward += 100 * cleared_lines**2
+            reward = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
@@ -311,7 +311,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         # These constants were taken from the near perfect player blockpost
         # https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/
         a = -0.510066
-        b = 0.760666
+        b = 10
         c = -0.35663
         d = -0.184483
         reward = a * aggregated_height + b * completed_lines + c * hole_count + d * bumpiness
