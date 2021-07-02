@@ -269,9 +269,9 @@ class TetrisEngine(py_environment.PyEnvironment):
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            reward += 100 * self._clear_lines()**2
-            # reward = self.get_reward()
             cleared_lines = self._clear_lines()
+            reward += 100 * cleared_lines**2
+            # reward = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
