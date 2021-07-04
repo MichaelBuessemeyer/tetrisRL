@@ -70,6 +70,13 @@ import curses
 from engine import TetrisEngine
 from time import sleep
 
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+
+config = ConfigProto()
+config.gpu_options.allow_growth = True
+session = InteractiveSession(config=config)
+
 num_eval_episodes = 50
 eval_interval = 2000
 
