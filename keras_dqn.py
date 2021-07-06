@@ -74,6 +74,10 @@ from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 
 config = ConfigProto()
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+  tf.config.experimental.set_memory_growth(gpu, True)
 session = InteractiveSession(config=config)
 
 num_eval_episodes = 50
