@@ -8,3 +8,6 @@ venv
 logs/
 tensorboard/
 .vscode
+.DS_Store
+pull.bash
+push.bash
