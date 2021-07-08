@@ -179,10 +179,20 @@ def perform_training(args):
     # make a action.
     train_env = get_env(width, height)
     test_env = get_env(width, height)
-    model = create_q_model(train_env)
+    model = None
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
     # loss between the Q-values is calculated the target Q-value is stable.
+    model_target = None
+    best_avg_return = float('-inf')
+    if args.load_model_from:
+        model = keras.models.load_model(args.load_model_from)
+        model_target = keras.models.load_model(args.load_model_from)
+        # Read the avg return from the loaded models name
+        best_avg_return = float(args.load_model_from.split("_")[-1].split(".")[0])
+    else:
+        model = create_q_model(train_env)
+        model_target = create_q_model(train_env)
     model_target = create_q_model(train_env)
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
@@ -211,7 +221,7 @@ def perform_training(args):
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
 
-
+     
     while True:  # Run until solved
         state = train_env.do_reset()
         episode_reward = 0
@@ -314,6 +324,11 @@ def perform_training(args):
 
             if step_count % eval_interval == 0 and step_count > epsilon_random_frames:
                 avg_return = compute_avg_return(model, test_env, num_eval_episodes)
+                if avg_return > best_avg_return and args.save_model:
+                    model_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}.cpt".format(avg_return)
+                    model.save(model_path)
+                    print("Saved new model to " + model_path + ".")
+                best_avg_return = max(best_avg_return, avg_return)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('avg return', avg_return, step=step_count)
 
@@ -341,10 +356,10 @@ def perform_training(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
+    parser.add_argument("--save_model", help="Whether to save the model with the given training name as a checkpoint once its average return improves.",
                     action="store_true")
-    parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
-                    action="store_true")
+    parser.add_argument("--load_model_from", help="The path to load the model from.",
+                    type=str)
     parser.add_argument("--render_env", action="store_true",
                     help="To enable rendering the env after each training step")
     parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
