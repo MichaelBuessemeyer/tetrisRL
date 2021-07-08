@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = None # set None for all pieces
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -305,6 +305,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._state = self.get_state()
         return self._state
 
+    # get reward based on "near perfect player" heuristic
     def get_reward(self):
         features = self.get_all_features()
         aggregated_height, bumpiness, completed_lines, hole_count = features
