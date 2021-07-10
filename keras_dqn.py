@@ -68,6 +68,7 @@ from datetime import datetime
 import argparse
 import curses
 import os
+import shutil
 from engine import TetrisEngine
 from time import sleep
 
@@ -327,12 +328,12 @@ def perform_training(args):
             if step_count % eval_interval == 0 and step_count > epsilon_random_frames:
                 avg_return = compute_avg_return(model, test_env, num_eval_episodes)
                 if avg_return > best_avg_return and args.save_model:
-                    model_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}.cpt".format(avg_return)
-                    model.save(model_path)
+                    model_dir_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}.cpt".format(avg_return)
+                    model.save(model_dir_path)
                     if last_saved_model_path and os.path.exists(last_saved_model_path):
-                        os.remove(last_saved_model_path)
-                    last_saved_model_path = model_path
-                    print("Saved new model to " + model_path + ".")
+                        shutil.rmtree(last_saved_model_path)
+                    last_saved_model_path = model_dir_path
+                    print("Saved new model to " + model_dir_path + ".")
                 best_avg_return = max(best_avg_return, avg_return)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('avg return', avg_return, step=step_count)
