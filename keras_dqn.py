@@ -67,6 +67,7 @@ from tensorflow.keras import layers
 from datetime import datetime
 import argparse
 import curses
+import os
 from engine import TetrisEngine
 from time import sleep
 
@@ -220,6 +221,7 @@ def perform_training(args):
     update_target_network = args.update_target_network
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
+    last_saved_model_path = None
 
      
     while True:  # Run until solved
@@ -327,6 +329,9 @@ def perform_training(args):
                 if avg_return > best_avg_return and args.save_model:
                     model_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}.cpt".format(avg_return)
                     model.save(model_path)
+                    if last_saved_model_path and os.path.exists(last_saved_model_path):
+                        os.remove(last_saved_model_path)
+                    last_saved_model_path = model_path
                     print("Saved new model to " + model_path + ".")
                 best_avg_return = max(best_avg_return, avg_return)
                 with test_summary_writer.as_default():
