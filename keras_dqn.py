@@ -291,13 +291,22 @@ def perform_training(args):
 
                         # Build the updated Q-values for the sampled future states
                         # Use the target model for stability
-                        # TODO: use prediction from matching target model :(
-                        next_tetromino = current_tetromino
-                        future_rewards = target_models[next_tetromino].predict(state_next_sample)
+
+                        # use prediction for next state from matching target model
+                        #future_rewards = [target_models[state_next_sample[index][-1][-1][-1]].predict([state_next_sample[index]]) for index in range(state_next_sample.shape[0])]
+                        future_rewards = []
+                        for index in range(state_next_sample.shape[0]):
+                            next_state = state_next_sample[index]
+                            fancy_next_state = tf.convert_to_tensor([next_state])
+                            next_tetro = int(next_state[-1][-1][-1])
+                            future_rewards.append(target_models[next_tetro].predict(fancy_next_state)[0])
+
+                        future_rewards = future_rewards
                         # Q value = reward + discount factor * expected future reward
-                        updated_q_values = rewards_sample + gamma * tf.reduce_max(
+                        temp = gamma * tf.reduce_max(
                             future_rewards, axis=1
                         )
+                        updated_q_values = rewards_sample + temp
 
                         # If final frame set the last value to -100
                         updated_q_values = updated_q_values * (1 - done_sample) - done_sample*(100)
