@@ -67,6 +67,8 @@ from tensorflow.keras import layers
 from datetime import datetime
 import argparse
 import curses
+import os
+import shutil
 from engine import TetrisEngine
 from time import sleep
 
@@ -81,7 +83,7 @@ for gpu in gpus:
 session = InteractiveSession(config=config)
 
 num_eval_episodes = 50
-eval_interval = 2000
+eval_interval = 20
 
 def get_env(width, height):
     env = TetrisEngine(width, height)
@@ -182,25 +184,24 @@ def perform_training(args):
     # splitted former modelper tetromino
     # tetrominos = ['t', 'j', 'l', 'z', 's', 'i', 'o']
     models = {}
-    models[0] = create_q_model(train_env)
-    models[1] = create_q_model(train_env)
-    models[2] = create_q_model(train_env)
-    models[3] = create_q_model(train_env)
-    models[4] = create_q_model(train_env)
-    models[5] = create_q_model(train_env)
-    models[6] = create_q_model(train_env)
+    target_models = {}
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
     # loss between the Q-values is calculated the target Q-value is stable.
     # splitted former model_target per tetromino
-    target_models = {}
-    target_models[0] = create_q_model(train_env)
-    target_models[1] = create_q_model(train_env)
-    target_models[2] = create_q_model(train_env)
-    target_models[3] = create_q_model(train_env)
-    target_models[4] = create_q_model(train_env)
-    target_models[5] = create_q_model(train_env)
-    target_models[6] = create_q_model(train_env)
+    best_avg_return = float('-inf')
+    if args.load_several_models_from:
+        # load models from directory
+        for i in range(0, 7):
+            path = "{}/model_{}.cpt".format(args.load_several_models_from, i)
+            models[i] = keras.models.load_model(path)
+            target_models[i] = keras.models.load_model("{}/model_{}.cpt".format(args.load_several_models_from, i))
+    else:
+        for i in range(0, 7):
+            models[i] = create_q_model(train_env)
+            target_models[i] = create_q_model(train_env)
+    # model_target = create_q_model(train_env)
+
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
     optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
@@ -227,8 +228,9 @@ def perform_training(args):
     update_target_network = args.update_target_network
     # Using huber loss for stability
     loss_function = keras.losses.Huber()
+    last_saved_model_path = None
 
-
+     
     while True:  # Run until solved
         state = train_env.do_reset()
         episode_reward = 0
@@ -345,7 +347,17 @@ def perform_training(args):
                 del done_history[current_tetromino][:1]
 
             if step_count % eval_interval == 0 and step_count > epsilon_random_frames:
+                print("HAAALLLOOO")
                 avg_return = compute_avg_return(models[current_tetromino], test_env, num_eval_episodes)
+                if avg_return > best_avg_return and args.save_model:
+                    model_dir_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}".format(avg_return)
+                    for i in range(0, 7):
+                        models[i].save(model_dir_path + "/model_" + str(i))
+                    if last_saved_model_path and os.path.exists(last_saved_model_path):
+                        shutil.rmtree(last_saved_model_path)
+                    last_saved_model_path = model_dir_path
+                    print("Saved new models to " + model_dir_path + ".")
+                best_avg_return = max(best_avg_return, avg_return)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('avg return', avg_return, step=step_count)
 
@@ -373,10 +385,12 @@ def perform_training(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--save_checkpoints", help="Set, if checkpoints should be used",
+    parser.add_argument("--save_model", help="Whether to save the model with the given training name as a checkpoint once its average return improves.",
                     action="store_true")
-    parser.add_argument("--use_checkpoints", help="Set, if want ot use saved checkpoints",
-                    action="store_true")
+    parser.add_argument("--load_model_from", help="The path to load the model from.",
+                    type=str)
+    parser.add_argument("--load_several_models_from", help="The path to the directory with the models for every tetromino.", # "The seven paths to to load the tetromino models from. In the order 't', 'j', 'l', 'z', 's', 'i', 'o' ",
+                    type=str)
     parser.add_argument("--render_env", action="store_true",
                     help="To enable rendering the env after each training step")
     parser.add_argument("--render_env_sleep_time", type=float, default=0.15,
