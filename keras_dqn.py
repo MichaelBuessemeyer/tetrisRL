@@ -195,12 +195,11 @@ def perform_training(args):
         for i in range(0, 7):
             path = "{}/model_{}.cpt".format(args.load_several_models_from, i)
             models[i] = keras.models.load_model(path)
-            target_models[i] = keras.models.load_model("{}/model_{}.cpt".format(args.load_several_models_from, i))
+            target_models[i] = keras.models.load_model(path)
     else:
         for i in range(0, 7):
             models[i] = create_q_model(train_env)
             target_models[i] = create_q_model(train_env)
-    # model_target = create_q_model(train_env)
 
     # In the Deepmind paper they use RMSProp however then Adam optimizer
     # improves training time
@@ -347,12 +346,11 @@ def perform_training(args):
                 del done_history[current_tetromino][:1]
 
             if step_count % eval_interval == 0 and step_count > epsilon_random_frames:
-                print("HAAALLLOOO")
                 avg_return = compute_avg_return(models[current_tetromino], test_env, num_eval_episodes)
                 if avg_return > best_avg_return and args.save_model:
                     model_dir_path = "checkpoints/" + str(current_time) + "_" + args.trainings_name + "_{:.2f}".format(avg_return)
                     for i in range(0, 7):
-                        models[i].save(model_dir_path + "/model_" + str(i))
+                        models[i].save(model_dir_path + "/model_{}.cpt".format(i))
                     if last_saved_model_path and os.path.exists(last_saved_model_path):
                         shutil.rmtree(last_saved_model_path)
                     last_saved_model_path = model_dir_path
