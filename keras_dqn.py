@@ -141,7 +141,7 @@ def create_q_model(env: TetrisEngine):
     return keras.Model(inputs=inputs, outputs=action)
 
 # For CLI Animation
-def render_env(env, screen, current_epsilon, step_count, using_model, total_cleared_lines):
+def render_env(env, screen, current_epsilon, step_count, using_model, total_cleared_lines, render_env_sleep_time):
     # Render
     screen.clear()
     screen.addstr(str(env))
@@ -150,6 +150,7 @@ def render_env(env, screen, current_epsilon, step_count, using_model, total_clea
     screen.addstr("Current Steps: {}\n".format(step_count))
     screen.addstr("Used Model?: {}\n".format(using_model))
     screen.refresh()
+    sleep(render_env_sleep_time)
 
 """
 ## Train
@@ -195,8 +196,7 @@ def perform_training(args):
     else:
         model = create_q_model(train_env)
         model_target = create_q_model(train_env)
-    model_target = create_q_model(train_env)
-    # In the Deepmind paper they use RMSProp however then Adam optimizer
+    # In the Deepmind paper they use RMSProp however the Adam optimizer
     # improves training time
     optimizer = keras.optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
 
@@ -265,7 +265,6 @@ def perform_training(args):
             done_history.append(done)
             rewards_history.append(reward)
             state = state_next
-
             # Update every fourth frame and once batch size is over 32
             if step_count % update_after_actions == 0 and len(done_history) > batch_size:
 
@@ -338,14 +337,29 @@ def perform_training(args):
                 with test_summary_writer.as_default():
                     tf.summary.scalar('avg return', avg_return, step=step_count)
 
+            if args.render_env and step_count > epsilon_random_frames:
+                render_env(train_env, screen, epsilon, step_count, using_model, total_cleared_lines, args.render_env_sleep_time)
+            if step_count > epsilon_random_frames:
+                features = train_env.features
+                delta_features = train_env.delta_features
+                with train_summary_writer.as_default():
+                    tf.summary.scalar('total reward', train_env.total_reward, step=step_count)
+                    tf.summary.scalar("current reward", train_env.current_reward, step=step_count)
+                    tf.summary.scalar("aggregated height", features[0], step=step_count)
+                    tf.summary.scalar("delta: aggregated height", delta_features[0], step=step_count)
+                    tf.summary.scalar("bumpiness", features[1], step=step_count)
+                    tf.summary.scalar("delta: bumpiness", delta_features[1], step=step_count)
+                    tf.summary.scalar("cleared_lines", features[2], step=step_count)
+                    tf.summary.scalar("delta: cleared_lines", delta_features[2], step=step_count)
+                    tf.summary.scalar("hole count", features[3], step=step_count)
+                    tf.summary.scalar("delta: hole count", delta_features[3], step=step_count)
+            
             if done:
                 with train_summary_writer.as_default():
-                    tf.summary.scalar('return', running_reward, step=step_count)
+                    tf.summary.scalar('return', episode_reward, step=step_count)
                     tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=step_count)
                 break
-
-            if args.render_env:
-                render_env(train_env, screen, epsilon, step_count, using_model, total_cleared_lines)
+            
 
         # Update running reward to check condition for solving
         episode_reward_history.append(episode_reward)
@@ -355,9 +369,9 @@ def perform_training(args):
 
         episode_count += 1
 
-        if running_reward > 100:  # Condition to consider the task solved
-            print("Solved at episode {}!".format(episode_count))
-            break
+        #if running_reward > 100:  # Condition to consider the task solved
+        #    print("Solved at episode {}!".format(episode_count))
+        #    break
 
 
 if __name__ == "__main__":
