@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = False
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -239,7 +239,7 @@ class TetrisEngine(py_environment.PyEnvironment):
                 self.shape, self.anchor = left(
                     self.shape, self.anchor, self.board)
         # Hopefully this position is valid :D
-        reward, done, cleared_lines = self.step2(2)
+        reward, done, cleared_lines, delta_features = self.step2(2)
         self.total_reward += reward
         self.current_reward = reward
         self._state = self.get_state()
@@ -249,7 +249,7 @@ class TetrisEngine(py_environment.PyEnvironment):
             else:
                 return ts.transition(self._state, reward, discount=1.0)
         else:
-            return self._state, reward, done, {"cleared_lines" : cleared_lines}
+            return self._state, reward, done, {"cleared_lines" : cleared_lines, "delta_features": delta_features}
 
     def step2(self, action):
         self.anchor = (int(self.anchor[0]), int(self.anchor[1]))
@@ -269,9 +269,9 @@ class TetrisEngine(py_environment.PyEnvironment):
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            cleared_lines = self._clear_lines()
-            reward += 100 * cleared_lines**2
-            # reward = self.get_reward()
+            # cleared_lines = self._clear_lines()
+            # reward += 100 * cleared_lines**2
+            reward, delta_features, cleared_lines = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
@@ -284,7 +284,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         # self._set_piece(True)
         # state = np.copy(self.board)
         # self._set_piece(False)
-        return reward, done, cleared_lines
+        return reward, done, cleared_lines, delta_features
 
     def _reset(self):
         self.clear()
@@ -303,30 +303,34 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._new_piece()
         self.board = np.zeros_like(self.board)
         self._state = self.get_state()
+        self.features = self.get_all_features()
         return self._state
 
     def get_reward(self):
         features = self.get_all_features()
-        aggregated_height, bumpiness, completed_lines, hole_count = features
+        delta_features = features - self.features
+        self.delta_features = delta_features
+        self.features = features
+        aggregated_height, bumpiness, completed_lines, hole_count = delta_features
         # These constants were taken from the near perfect player blockpost
         # https://codemyroad.wordpress.com/2013/04/14/tetris-ai-the-near-perfect-player/
         a = -0.510066
-        b = 0.760666
+        b = 0.760666 * 2
         c = -0.35663
         d = -0.184483
         reward = a * aggregated_height + b * completed_lines + c * hole_count + d * bumpiness
-        return reward
+        # Always treat like the previous step did not clear anything to not penalizes the action directly after clearing lines.
+        self.features[2] = 0
+        return reward, delta_features, completed_lines
 
 
     ###### Feature Section #######
     def get_all_features(self):
         features = np.zeros(4, dtype=np.int32)
-        self._set_piece(False)
         features[0] = self.get_aggregated_height()
         features[1] = self.get_bumpiness()
         features[2] = self.completed_lines()
         features[3] = self.get_hole_count()
-        self._set_piece(True)
         return features
 
     def get_bumpiness(self):
@@ -372,16 +376,20 @@ class TetrisEngine(py_environment.PyEnvironment):
                 self.board[x_in_board_space, y_in_board_space] = on
 
     def __repr__(self):
-        self._set_piece(True)
+        # self._set_piece(True)
         s = 'o' + '-' * self.width + 'o\n'
         s += '\n'.join(['|' + ''.join(['X' if j else ' ' for j in i]
                                       ) + '|' for i in self.board.T])
         s += '\no' + '-' * self.width + 'o\n'
-        self._set_piece(False)
+        # self._set_piece(False)
         s += 'Total Reward: {:.3f}\n'.format(self.total_reward)
         s += 'Current Reward: {:.3f}\n'.format(self.current_reward)
-        s += 'Aggregated Height: ' + str(self.get_aggregated_height()) + "\n"
-        s += 'Bumpiness: ' + str(self.get_bumpiness()) + "\n"
-        s += 'Completed Lines: ' + str(self.completed_lines()) + "\n"
-        s += 'Hole Count: ' + str(self.get_hole_count()) + "\n"
+        s += 'Aggregated Height: ' + str(self.features[0]) + "\n"
+        s += 'Delta: Aggregated Height: ' + str(self.delta_features[0]) + "\n"
+        s += 'Bumpiness: ' + str(self.features[1]) + "\n"
+        s += 'Delta: Bumpiness: ' + str(self.delta_features[1]) + "\n"
+        s += 'Completed Lines: ' + str(self.features[2]) + "\n"
+        s += 'Delta: Completed Lines: ' + str(self.delta_features[2]) + "\n"
+        s += 'Hole Count: ' + str(self.features[3]) + "\n"
+        s += 'Delta: Hole Count: ' + str(self.delta_features[3]) + "\n"
         return s
