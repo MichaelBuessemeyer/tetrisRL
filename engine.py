@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = False
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -271,7 +271,7 @@ class TetrisEngine(py_environment.PyEnvironment):
             self._set_piece(True)
             # cleared_lines = self._clear_lines()
             # reward += 100 * cleared_lines**2
-            reward, delta_features = self.get_reward()
+            reward, delta_features, cleared_lines = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
@@ -321,7 +321,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         reward = a * aggregated_height + b * completed_lines + c * hole_count + d * bumpiness
         # Always treat like the previous step did not clear anything to not penalizes the action directly after clearing lines.
         self.features[2] = 0
-        return reward, delta_features
+        return reward, delta_features, completed_lines
 
 
     ###### Feature Section #######
