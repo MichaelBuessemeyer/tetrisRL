@@ -18,6 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
+USE_RAINBOW = True
 ALWAYS_USE_PIECE = 5
 
 shapes = {
@@ -145,7 +146,9 @@ class TetrisEngine(py_environment.PyEnvironment):
 
     def get_observation_shape(self):
         # We have the full field: width * height and "image" 
-        # that is filled with the ids of the current tetromino. 
+        # that is filled with the ids of the current tetromino.
+        if USE_RAINBOW:
+            return (2, self.width, self.height)
         return (self.width, self.height, 2)
 
     def action_spec(self):
@@ -206,6 +209,11 @@ class TetrisEngine(py_environment.PyEnvironment):
     def get_state(self):
         if USE_TF_AGENTS:
             return np.append(self.board.flatten(), self.tetromino).astype(np.uint16)
+        elif USE_RAINBOW:
+            state = np.ones(shape=self.get_observation_shape(), dtype=np.int32)
+            state[0,:,:] = np.copy(self.board)
+            state[1,:,:] *= self.tetromino
+            return state
         else:
             state = np.ones(shape=self.get_observation_shape(), dtype=np.uint16)
             state[:,:,0] = np.copy(self.board)
