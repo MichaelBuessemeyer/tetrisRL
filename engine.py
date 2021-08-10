@@ -15,6 +15,9 @@ from tf_agents.environments import wrappers
 from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
 
+from tetris_ai import dqn_agent
+from tetris_ai.run import getDQNAgent
+
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
@@ -136,9 +139,14 @@ class TetrisEngine(py_environment.PyEnvironment):
 
         # used for generating shapes
         self._shape_counts = [0] * len(shapes)
-
+       
         # clear after initializing
         self.clear()
+
+        # Tetris AI DQNAgent
+        self.agent = getDQNAgent(self, epsilon_stop_episode=1)
+        # self.agent.load("tetris_ai/checkpoints/tetris-ai-best.cpt")
+
 
     def get_action_count(self):
         return ROTATION_ACTION_COUNT * self.width
@@ -263,14 +271,14 @@ class TetrisEngine(py_environment.PyEnvironment):
         # What a useless call :O
         # reward = self.count_valid_actions()
         #reward = random.randint(0, 0)
-        reward = 1
+        #reward = 1
         cleared_lines = 0
 
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            cleared_lines = self._clear_lines()
-            reward += 100 * cleared_lines**2
+            reward, features = self.get_agent_defined_reward()
+            cleared_lines = features[2]
             # reward = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
@@ -305,6 +313,18 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._state = self.get_state()
         return self._state
 
+    def get_state_size(self):
+        '''Size of the state'''
+        return 4
+
+    def get_agent_defined_reward(self):
+        features = self.get_all_features()
+        aggregated_height, bumpiness, completed_lines, hole_count = features
+        features_for_agent = [completed_lines, hole_count, bumpiness, aggregated_height]
+        features_for_agent = np.reshape(features_for_agent, [1, self.get_state_size()])
+        predicted_reward = self.agent.predict_value(features_for_agent)[0]
+        return predicted_reward, features
+
     def get_reward(self):
         features = self.get_all_features()
         aggregated_height, bumpiness, completed_lines, hole_count = features
@@ -322,9 +342,9 @@ class TetrisEngine(py_environment.PyEnvironment):
     def get_all_features(self):
         features = np.zeros(4, dtype=np.int32)
         self._set_piece(False)
+        features[2] = self._clear_lines()
         features[0] = self.get_aggregated_height()
         features[1] = self.get_bumpiness()
-        features[2] = self.completed_lines()
         features[3] = self.get_hole_count()
         self._set_piece(True)
         return features

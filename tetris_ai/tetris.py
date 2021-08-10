@@ -171,7 +171,7 @@ class Tetris:
 
 
     def _number_of_holes(self, board):
-        '''Number of holes in the board (empty sqquare with at least one block above it)'''
+        '''Number of holes in the board (empty square with at least one block above it)'''
         holes = 0
 
         for col in zip(*board):
@@ -229,7 +229,7 @@ class Tetris:
         holes = self._number_of_holes(board)
         total_bumpiness, max_bumpiness = self._bumpiness(board)
         sum_height, max_height, min_height = self._height(board)
-        return [lines, holes, total_bumpiness, sum_height]
+        return [lines, holes, total_bumpiness, sum_height] # same order needed in our case
 
 
     def get_next_states(self):

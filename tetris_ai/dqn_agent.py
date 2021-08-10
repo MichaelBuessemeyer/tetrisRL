@@ -1,6 +1,7 @@
 from keras.models import Sequential, save_model, load_model
 from keras.layers import Dense
 from collections import deque
+
 import numpy as np
 import random
 
@@ -147,4 +148,4 @@ class DQNAgent:
         self.model.save(path)
 
     def load(self, path: str):
-        self.model.save(path)
+        self.model = load_model(path)
