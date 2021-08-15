@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = None
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -104,10 +104,10 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._action_spec = array_spec.BoundedArraySpec(
             shape=(), dtype=np.int32, minimum=0, maximum=(ROTATION_ACTION_COUNT * width) - 1, name='action')
         self._observation_spec = array_spec.BoundedArraySpec(
-            shape=(self.width * self.height + 1,),
+            shape=(self.width * self.height + 2,),
             dtype=np.int32,
-            minimum=np.append(np.zeros(self.width * self.height), 0).astype(np.int32),
-            maximum=np.append(np.ones(self.width * self.height), 6).astype(np.int32),
+            minimum=np.append(np.zeros(self.width * self.height), [0, 0]).astype(np.int32),
+            maximum=np.append(np.ones(self.width * self.height), [6, 6]).astype(np.int32), # field array, current tetromino, nect tetromino
             name='observation'
         )
 
@@ -131,6 +131,7 @@ class TetrisEngine(py_environment.PyEnvironment):
         self.anchor = None
         self.shape = None
         self.tetromino = None
+        self.next_tetromino = None
         self.n_deaths = 0
         self.total_reward = 0
 
@@ -144,9 +145,10 @@ class TetrisEngine(py_environment.PyEnvironment):
         return ROTATION_ACTION_COUNT * self.width
 
     def get_observation_shape(self):
-        # We have the full field: width * height and "image" 
-        # that is filled with the ids of the current tetromino. 
-        return (self.width, self.height, 2)
+        # We have the full field: width * height and  
+        # "image" that is filled with the ids of the current tetromino and
+        # "image" that is filled with the ids of the next tetromino. 
+        return (self.width, self.height, 3)
 
     def action_spec(self):
         return self._action_spec
@@ -167,8 +169,9 @@ class TetrisEngine(py_environment.PyEnvironment):
             r -= n
             if r <= 0:
                 self._shape_counts[i] += 1
-                self.tetromino = i
-                return shapes[shape_names[i]]
+                self.tetromino = self.next_tetromino
+                self.next_tetromino = i
+                return shapes[shape_names[self.tetromino]]
 
     def _new_piece(self):
         # Place randomly on x-axis with 2 tiles padding
@@ -205,11 +208,12 @@ class TetrisEngine(py_environment.PyEnvironment):
 
     def get_state(self):
         if USE_TF_AGENTS:
-            return np.append(self.board.flatten(), self.tetromino).astype(np.uint16)
+            return np.append(self.board.flatten(), self.tetromino, self.next_tetromino).astype(np.uint16)
         else:
             state = np.ones(shape=self.get_observation_shape(), dtype=np.uint16)
             state[:,:,0] = np.copy(self.board)
             state[:,:,1] *= self.tetromino
+            state[:,:,2] *= self.next_tetromino
             return state
 
 
@@ -300,6 +304,9 @@ class TetrisEngine(py_environment.PyEnvironment):
         self.score = 0
         self.total_reward = 0
         self.current_reward = 0
+        # generate current and next tetromino
+        self.next_tetromino = 0
+        self._new_piece()
         self._new_piece()
         self.board = np.zeros_like(self.board)
         self._state = self.get_state()
