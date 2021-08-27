@@ -15,13 +15,12 @@ from tf_agents.environments import wrappers
 from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
 
-from tetris_ai import dqn_agent
 from tetris_ai.run import getDQNAgent
 
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = False
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -145,7 +144,7 @@ class TetrisEngine(py_environment.PyEnvironment):
 
         # Tetris AI DQNAgent
         self.agent = getDQNAgent(self, epsilon_stop_episode=1)
-        # self.agent.load("tetris_ai/checkpoints/tetris-ai-best.cpt")
+        self.agent.load("checkpoints/tetris-ai-best.cpt")
 
 
     def get_action_count(self):

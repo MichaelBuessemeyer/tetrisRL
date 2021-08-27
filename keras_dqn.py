@@ -342,6 +342,7 @@ def perform_training(args):
             if done:
                 with train_summary_writer.as_default():
                     tf.summary.scalar('return', running_reward, step=step_count)
+                    tf.summary.scalar('total return', episode_reward, step=step_count)
                     tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=step_count)
                 break
 
@@ -356,9 +357,9 @@ def perform_training(args):
 
         episode_count += 1
 
-        if running_reward > 100:  # Condition to consider the task solved
-            print("Solved at episode {}!".format(episode_count))
-            break
+        # if running_reward > 100:  # Condition to consider the task solved
+        #    print("Solved at episode {}!".format(episode_count))
+        #    break
 
 
 if __name__ == "__main__":

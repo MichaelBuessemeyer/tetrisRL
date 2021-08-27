@@ -2,9 +2,13 @@ from tetris_ai.dqn_agent import DQNAgent
 from tetris_ai.tetris import Tetris
 from datetime import datetime
 from statistics import mean, median
-import random
-# from tqdm import tqdm
+from tqdm import tqdm
 import tensorflow as tf
+
+
+physical_devices = tf.config.list_physical_devices('GPU') 
+for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
         
 def getDQNAgent(env, epsilon_stop_episode = 1500):
     activations = ['relu', 'relu', 'linear']
@@ -21,8 +25,8 @@ def getDQNAgent(env, epsilon_stop_episode = 1500):
 # Run dqn with Tetris
 def dqn():
     env = Tetris()
-    episodes = 15000
-    max_steps = None
+    episodes = 50000
+    max_steps = 1000
     mem_size = 20000
     batch_size = 512
     epochs = 1
@@ -88,7 +92,6 @@ def dqn():
             if avg_score > best_mean:
                 agent.persist("checkpoints/tetris-ai-best.cpt")
                 best_mean = avg_score
-
 
 if __name__ == "__main__":
     dqn()
