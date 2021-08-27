@@ -59,9 +59,12 @@ million frames which are processed in less than 24 hours on a modern machine.
 ## Setup
 """
 
+import tensorflow as tf
+physical_devices = tf.config.list_physical_devices('GPU') 
+for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
 import numpy as np
 from pathlib import Path
-import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from datetime import datetime
