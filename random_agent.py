@@ -13,6 +13,7 @@ from engine import TetrisEngine
 
 num_eval_episodes = 50
 eval_interval = 2000
+limit = 1000000
 
 def get_env(width, height):
     env = TetrisEngine(width, height)
@@ -29,9 +30,8 @@ def compute_avg_return(environment, num_episodes=10):
         MAX_EPISODE_LENGTH = 200
         while not done and counter < MAX_EPISODE_LENGTH:
             # Take a random action
-            action_probs = np.random.choice(environment.get_action_count())
+            action = np.random.choice(environment.get_action_count())
             # Take best action
-            action = np.argmax(action_probs[0]).numpy()
 
             _state, reward, done, _ = environment._step(action)
             episode_return += reward
@@ -50,8 +50,8 @@ def perform_training(args):
     width, height = 10, 20 # standard tetris friends rules
 
     current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-    train_log_dir = 'tensorboard/keras_dqn/' + args.trainings_name + "_" + current_time + '/train'
-    test_log_dir = 'tensorboard/keras_dqn/' + args.trainings_name + "_" + current_time + '/test'
+    train_log_dir = 'tensorboard/random_agent/' + args.trainings_name + "_" + current_time + '/train'
+    test_log_dir = 'tensorboard/random_agent/' + args.trainings_name + "_" + current_time + '/test'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
     
@@ -75,7 +75,7 @@ def perform_training(args):
     train_env = get_env(width, height)
     test_env = get_env(width, height)
 
-    while True:  # Run until solved
+    while step_count < limit:  # Run for 1 million
         state = train_env.do_reset()
         episode_reward = 0
         total_cleared_lines = 0 
@@ -131,6 +131,8 @@ if __name__ == "__main__":
                     help="The time to wait after each env render.")
     parser.add_argument("--max_memory_length", type=int, default=100000,
                     help="Maximum replay length")
+    parser.add_argument("--max_steps_per_episode", type=int, default=10000,
+                    help="Maximum steps an episode can have before resetting the environment")
 
     args = parser.parse_args()
     perform_training(args)
