@@ -7,7 +7,6 @@ for device in physical_devices:
 
 import random
 import numpy as np
-from tensorflow.python.eager.function import _shape_relaxed_type_for_composite_tensor
 
 from tf_agents.environments import py_environment
 from tf_agents.environments import tf_environment
@@ -100,9 +99,10 @@ def split_action(action: int):
     return rotation, column
 
 class TetrisEngine(py_environment.PyEnvironment):
-    def __init__(self, width, height):
+    def __init__(self, width, height, use_agent_for_reward: bool):
         self.width = width
         self.height = height
+        self.use_agent_for_reward = use_agent_for_reward
         self.board = np.zeros(shape=(width, height), dtype=np.int32)
         # We have 4 rotations and width many columns where a tetromino can be placed.
         # Thus a one dimensional action space goes from 0 to (4 * width) - 1
@@ -273,15 +273,18 @@ class TetrisEngine(py_environment.PyEnvironment):
         # What a useless call :O
         # reward = self.count_valid_actions()
         #reward = random.randint(0, 0)
-        #reward = 1
+        reward = 1
         cleared_lines = 0
 
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            reward, features = self.get_agent_defined_reward()
-            cleared_lines = features[2]
-            # reward = self.get_reward()
+            if self.use_agent_for_reward:
+                reward, features = self.get_agent_defined_reward()
+                cleared_lines = features[2]
+            else:
+                cleared_lines = self._clear_lines()
+                reward += 100 * cleared_lines**2
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
