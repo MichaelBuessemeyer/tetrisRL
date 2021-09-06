@@ -59,9 +59,12 @@ million frames which are processed in less than 24 hours on a modern machine.
 ## Setup
 """
 
+import tensorflow as tf
+physical_devices = tf.config.list_physical_devices('GPU') 
+for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
 import numpy as np
 from pathlib import Path
-import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from datetime import datetime
@@ -75,6 +78,7 @@ from time import sleep
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 
+
 config = ConfigProto()
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -85,8 +89,8 @@ session = InteractiveSession(config=config)
 num_eval_episodes = 50
 eval_interval = 2000
 
-def get_env(width, height):
-    env = TetrisEngine(width, height)
+def get_env(width, height, use_agent_for_reward):
+    env = TetrisEngine(width, height, use_agent_for_reward)
     return env
 
 def compute_avg_return(model, environment, num_episodes=10):
@@ -179,8 +183,8 @@ def perform_training(args):
 
     # The first model makes the predictions for Q-values which are used to
     # make a action.
-    train_env = get_env(width, height)
-    test_env = get_env(width, height)
+    train_env = get_env(width, height, args.use_agent_for_reward)
+    test_env = get_env(width, height, args.use_agent_for_reward)
     model = None
     # Build a target model for the prediction of future rewards.
     # The weights of a target model get updated every 10000 steps thus when the
@@ -341,6 +345,7 @@ def perform_training(args):
             if done:
                 with train_summary_writer.as_default():
                     tf.summary.scalar('return', running_reward, step=step_count)
+                    tf.summary.scalar('total return', episode_reward, step=step_count)
                     tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=step_count)
                 break
 
@@ -355,13 +360,15 @@ def perform_training(args):
 
         episode_count += 1
 
-        if running_reward > 100:  # Condition to consider the task solved
-            print("Solved at episode {}!".format(episode_count))
-            break
+        # if running_reward > 100:  # Condition to consider the task solved
+        #    print("Solved at episode {}!".format(episode_count))
+        #    break
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--use_agent_for_reward", help="Whether to use the best trained tetris ai nn to calculate the reward for the currently reached state.",
+                    action="store_true")
     parser.add_argument("--save_model", help="Whether to save the model with the given training name as a checkpoint once its average return improves.",
                     action="store_true")
     parser.add_argument("--load_model_from", help="The path to load the model from.",
@@ -386,7 +393,7 @@ if __name__ == "__main__":
                     help="Discount factor for past rewards")
     parser.add_argument("--epsilon_min", type=float, default=0.1,
                     help="Minimum for the epsilon greed factor")
-    parser.add_argument("--epsilon_max", type=int, default=1.0,
+    parser.add_argument("--epsilon_max", type=float, default=1.0,
                     help="Maximum for the epsilon greed factor")
     parser.add_argument("--batch_size", type=int, default=32,
                     help="Size of batch taken from replay buffer")

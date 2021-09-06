@@ -1,10 +1,12 @@
 #from __future__ import print_function
 
-import random
-
 import tensorflow as tf
+physical_devices = tf.config.list_physical_devices('GPU') 
+for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
+
+import random
 import numpy as np
-from tensorflow.python.eager.function import _shape_relaxed_type_for_composite_tensor
 
 from tf_agents.environments import py_environment
 from tf_agents.environments import tf_environment
@@ -15,10 +17,12 @@ from tf_agents.environments import wrappers
 from tf_agents.environments import suite_gym
 from tf_agents.trajectories import time_step as ts
 
+from tetris_ai.run import getDQNAgent
+
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = False
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -95,9 +99,10 @@ def split_action(action: int):
     return rotation, column
 
 class TetrisEngine(py_environment.PyEnvironment):
-    def __init__(self, width, height):
+    def __init__(self, width, height, use_agent_for_reward: bool):
         self.width = width
         self.height = height
+        self.use_agent_for_reward = use_agent_for_reward
         self.board = np.zeros(shape=(width, height), dtype=np.int32)
         # We have 4 rotations and width many columns where a tetromino can be placed.
         # Thus a one dimensional action space goes from 0 to (4 * width) - 1
@@ -136,9 +141,14 @@ class TetrisEngine(py_environment.PyEnvironment):
 
         # used for generating shapes
         self._shape_counts = [0] * len(shapes)
-
+       
         # clear after initializing
         self.clear()
+
+        # Tetris AI DQNAgent
+        self.agent = getDQNAgent(self, epsilon_stop_episode=1)
+        self.agent.load("checkpoints/tetris-ai-best.cpt")
+
 
     def get_action_count(self):
         return ROTATION_ACTION_COUNT * self.width
@@ -269,9 +279,12 @@ class TetrisEngine(py_environment.PyEnvironment):
         done = False
         if self._has_dropped():
             self._set_piece(True)
-            cleared_lines = self._clear_lines()
-            reward += 100 * cleared_lines**2
-            # reward = self.get_reward()
+            if self.use_agent_for_reward:
+                reward, features = self.get_agent_defined_reward()
+                cleared_lines = features[2]
+            else:
+                cleared_lines = self._clear_lines()
+                reward += 100 * cleared_lines**2
             if np.any(self.board[:, 0]):
                 self.clear()
                 self.n_deaths += 1
@@ -305,6 +318,18 @@ class TetrisEngine(py_environment.PyEnvironment):
         self._state = self.get_state()
         return self._state
 
+    def get_state_size(self):
+        '''Size of the state'''
+        return 4
+
+    def get_agent_defined_reward(self):
+        features = self.get_all_features()
+        aggregated_height, bumpiness, completed_lines, hole_count = features
+        features_for_agent = [completed_lines, hole_count, bumpiness, aggregated_height]
+        features_for_agent = np.reshape(features_for_agent, [1, self.get_state_size()])
+        predicted_reward = self.agent.predict_value(features_for_agent)[0]
+        return predicted_reward, features
+
     def get_reward(self):
         features = self.get_all_features()
         aggregated_height, bumpiness, completed_lines, hole_count = features
@@ -322,9 +347,9 @@ class TetrisEngine(py_environment.PyEnvironment):
     def get_all_features(self):
         features = np.zeros(4, dtype=np.int32)
         self._set_piece(False)
+        features[2] = self._clear_lines()
         features[0] = self.get_aggregated_height()
         features[1] = self.get_bumpiness()
-        features[2] = self.completed_lines()
         features[3] = self.get_hole_count()
         self._set_piece(True)
         return features
