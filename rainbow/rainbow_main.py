@@ -23,6 +23,16 @@ from engine import TetrisEngine
 from rainbow_memory import ReplayMemory
 # from test import test
 
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+
+config = ConfigProto()
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+  tf.config.experimental.set_memory_growth(gpu, True)
+session = InteractiveSession(config=config)
+
 
 # Note that hyperparameters may originally be reported in ATARI game frames instead of agent steps
 parser = argparse.ArgumentParser(description='Rainbow')
@@ -122,7 +132,6 @@ def save_memory(memory, memory_path, disable_bzip):
       pickle.dump(memory, zipped_pickle_file)
 
 def compute_avg_return(model, environment, num_episodes=10):
-
   total_return = 0.0
   for _ in range(num_episodes):
       state = environment.do_reset()
@@ -133,11 +142,8 @@ def compute_avg_return(model, environment, num_episodes=10):
       while not done and counter < MAX_EPISODE_LENGTH:
           # Predict action Q-values
           # From environment state
-          # state_tensor = tf.convert_to_tensor(state, dtype=tf.uint16)
-          # state_tensor = tf.expand_dims(state_tensor, 0)
-          action_probs = model.act(state)
           # Take best action
-          action = np.argmax(action_probs[0]).numpy()
+          action = model.act(state)
 
           state, reward, done, _ = environment._step(action)
           episode_return += reward
