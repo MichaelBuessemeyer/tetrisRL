@@ -18,7 +18,7 @@ from tf_agents.trajectories import time_step as ts
 tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = None
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
@@ -263,14 +263,14 @@ class TetrisEngine(py_environment.PyEnvironment):
         # What a useless call :O
         # reward = self.count_valid_actions()
         #reward = random.randint(0, 0)
-        reward = 1
+        reward = 0
         cleared_lines = 0
 
         done = False
         if self._has_dropped():
             self._set_piece(True)
             cleared_lines = self._clear_lines()
-            reward += 100 * cleared_lines**2
+            reward = 100 * cleared_lines**2
             # reward = self.get_reward()
             if np.any(self.board[:, 0]):
                 self.clear()
