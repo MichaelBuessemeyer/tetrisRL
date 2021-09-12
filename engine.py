@@ -19,7 +19,7 @@ tf.compat.v1.enable_v2_behavior()
 
 USE_TF_AGENTS = False
 USE_RAINBOW = True
-ALWAYS_USE_PIECE = 5
+ALWAYS_USE_PIECE = None
 
 shapes = {
     'T': [(0, 0), (-1, 0), (1, 0), (0, -1)],
