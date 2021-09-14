@@ -1,3 +1,6 @@
+# The code in this file is taken from https://github.com/Kaixhin/Rainbow
+
+
 # -*- coding: utf-8 -*-
 from __future__ import division
 import argparse
