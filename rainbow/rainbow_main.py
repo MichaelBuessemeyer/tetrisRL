@@ -99,11 +99,6 @@ if torch.cuda.is_available() and not args.disable_cuda:
 else:
   args.device = torch.device('cpu')
 
-
-# Simple ISO 8601 timestamped logger
-def log(s):
-  print('[' + str(datetime.now().strftime('%Y-%m-%dT%H:%M:%S')) + '] ' + s)
-
 # Logging Setup
 current_time = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
 train_log_dir = 'tensorboard/rainbow/' + args.trainings_name + "_" + current_time + '/train'
@@ -140,8 +135,6 @@ def compute_avg_return(model, environment, num_episodes=10):
       counter = 0
       MAX_EPISODE_LENGTH = 200
       while not done and counter < MAX_EPISODE_LENGTH:
-          # Predict action Q-values
-          # From environment state
           # Take best action
           action = model.act(state)
 
@@ -158,8 +151,6 @@ def compute_avg_return(model, environment, num_episodes=10):
 width, height = 10, 20 # standard tetris friends rules
 train_env = TetrisEngine(width, height)
 test_env = TetrisEngine(width, height)
-# env.train()
-# action_space = env.action_space()
 action_space = train_env.get_action_count()
 
 # Agent
@@ -192,75 +183,57 @@ while T < args.evaluation_size:
   state = next_state
   T += 1
 
-# if args.evaluate:
-if False:
-  dqn.eval()  # Set DQN (online network) to evaluation mode
-  avg_reward, avg_Q = test(args, 0, dqn, val_mem, metrics, results_dir, evaluate=True)  # Test
-  print('Avg. reward: ' + str(avg_reward) + ' | Avg. Q: ' + str(avg_Q))
-else:
-  # Training loop
-  dqn.train()
-  T, done = 0, False
-  state = train_env.do_reset()
-  episode_reward = 0
-  total_cleared_lines = 0
-  for T in trange(1, args.T_max + 1):
-    if done:
-      with train_summary_writer.as_default():
-        tf.summary.scalar('return', running_reward, step=T)
-        tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=T)
-      state = train_env.do_reset()
-      episode_reward = 0
-      total_cleared_lines = 0
+# Training loop
+dqn.train()
+T, done = 0, False
+state = train_env.do_reset()
+episode_reward = 0
+total_cleared_lines = 0
+for T in trange(1, args.T_max + 1):
+  if done:
+    with train_summary_writer.as_default():
+      tf.summary.scalar('return', running_reward, step=T)
+      tf.summary.scalar("cleared_lines_count", total_cleared_lines, step=T)
+    state = train_env.do_reset()
+    episode_reward = 0
+    total_cleared_lines = 0
+
+  if T % args.replay_frequency == 0:
+    dqn.reset_noise()  # Draw a new set of noisy weights
+
+  action = dqn.act(state)  # Choose an action greedily (with noisy weights)
+  next_state, reward, done, additional_info = train_env._step(action)  # Step
+  if args.reward_clip > 0:
+    reward = max(min(reward, args.reward_clip), -args.reward_clip)  # Clip rewards
+  mem.append(state, action, reward, done)  # Append transition to memory
+
+  episode_reward += reward
+  episode_reward_history.append(episode_reward)
+  if len(episode_reward_history) > 100:
+    del episode_reward_history[:1]
+  running_reward = np.mean(episode_reward_history)
+  total_cleared_lines += additional_info["cleared_lines"]
+
+  # Train and test
+  if T >= args.learn_start:
+    mem.priority_weight = min(mem.priority_weight + priority_weight_increase, 1)  # Anneal importance sampling weight β to 1
 
     if T % args.replay_frequency == 0:
-      dqn.reset_noise()  # Draw a new set of noisy weights
+      dqn.learn(mem)  # Train with n-step distributional double-Q learning
 
-    action = dqn.act(state)  # Choose an action greedily (with noisy weights)
-    next_state, reward, done, additional_info = train_env._step(action)  # Step
-    if args.reward_clip > 0:
-      reward = max(min(reward, args.reward_clip), -args.reward_clip)  # Clip rewards
-    mem.append(state, action, reward, done)  # Append transition to memory
+    if T % eval_interval == 0:
+      dqn.eval()  # Set DQN (online network) to evaluation mode
+      avg_return = compute_avg_return(dqn, test_env, num_eval_episodes)
+      with test_summary_writer.as_default():
+        tf.summary.scalar('avg return', avg_return, step=T)
+      dqn.train()  # Set DQN (online network) back to training mode
 
-    episode_reward += reward
-    episode_reward_history.append(episode_reward)
-    if len(episode_reward_history) > 100:
-      del episode_reward_history[:1]
-    running_reward = np.mean(episode_reward_history)
-    total_cleared_lines += additional_info["cleared_lines"]
+    # Update target network
+    if T % args.target_update == 0:
+      dqn.update_target_net()
 
-    # Train and test
-    if T >= args.learn_start:
-      mem.priority_weight = min(mem.priority_weight + priority_weight_increase, 1)  # Anneal importance sampling weight β to 1
+    # Checkpoint the network
+    if (args.checkpoint_interval != 0) and (T % args.checkpoint_interval == 0):
+      dqn.save(results_dir, 'checkpoint.pth')
 
-      if T % args.replay_frequency == 0:
-        dqn.learn(mem)  # Train with n-step distributional double-Q learning
-
-      # if T % args.evaluation_interval == 0:
-      #   dqn.eval()  # Set DQN (online network) to evaluation mode
-      #   avg_reward, avg_Q = test(args, T, dqn, val_mem, metrics, results_dir)  # Test
-      #   log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(avg_reward) + ' | Avg. Q: ' + str(avg_Q))
-      #   dqn.train()  # Set DQN (online network) back to training mode
-
-      if T % eval_interval == 0:
-        dqn.eval()  # Set DQN (online network) to evaluation mode
-        avg_return = compute_avg_return(dqn, test_env, num_eval_episodes)
-        with test_summary_writer.as_default():
-          tf.summary.scalar('avg return', avg_return, step=T)
-        dqn.train()  # Set DQN (online network) back to training mode
-
-      #   # If memory path provided, save it
-      #   if args.memory is not None:
-      #     save_memory(mem, args.memory, args.disable_bzip_memory)
-
-      # Update target network
-      if T % args.target_update == 0:
-        dqn.update_target_net()
-
-      # Checkpoint the network
-      if (args.checkpoint_interval != 0) and (T % args.checkpoint_interval == 0):
-        dqn.save(results_dir, 'checkpoint.pth')
-
-    state = next_state
-
-# env.close()
+  state = next_state

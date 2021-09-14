@@ -3,10 +3,6 @@ from __future__ import division
 import numpy as np
 import torch
 
-
-# Transition_dtype = np.dtype([('timestep', np.int32), ('state', np.uint8, (84, 84)), ('action', np.int32), ('reward', np.float32), ('nonterminal', np.bool_)])
-# blank_trans = (0, np.zeros((84, 84), dtype=np.uint8), 0, 0.0, False)
-
 Transition_dtype = np.dtype([('timestep', np.int32), ('state', np.int32, (10, 20)), ('action', np.int32), ('reward', np.float32), ('nonterminal', np.bool_)])
 blank_trans = (0, np.zeros((10, 20), dtype=np.int32), 0, 0.0, False)
 
