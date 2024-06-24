@@ -13,3 +13,4 @@ IPython
 matplotlib
 pyyaml
 h5py
+torch
